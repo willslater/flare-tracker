@@ -12,7 +12,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow-x:hidden}
 body{background:#080b0f;color:#dde3ee;font-family:'DM Mono',monospace;font-size:13px;-webkit-text-size-adjust:100%}
-input,select,button,textarea{font-family:'DM Mono',monospace;font-size:13px}
+input,select,button,textarea{font-family:'DM Mono',monospace;font-size:16px}
 input[type=number]{-moz-appearance:textfield}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -23,10 +23,10 @@ table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:9px;letter-spacing:2px;color:#4a5870;text-transform:uppercase;padding:7px 8px;border-bottom:1px solid #1c2535;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid rgba(28,37,53,0.4);font-size:12px}
 .crow:hover td{background:rgba(255,255,255,0.03);cursor:pointer}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:100;display:flex;align-items:flex-end;justify-content:center;padding:0}
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:flex-end;justify-content:center;padding:0}
 @media(min-width:600px){.modal-bg{align-items:center;padding:16px}}
-.modal{background:#0d1017;border:1px solid #1c2535;border-radius:12px 12px 0 0;width:100%;max-width:580px;max-height:92vh;overflow-y:auto}
-@media(min-width:600px){.modal{border-radius:12px;max-height:88vh}}
+.modal{background:#0d1017;border:1px solid #1c2535;border-radius:12px 12px 0 0;width:100%;max-width:580px;position:relative;margin-top:auto;padding-bottom:env(safe-area-inset-bottom)}
+@media(min-width:600px){.modal{border-radius:12px;margin:auto}}
 .setup-overlay{position:fixed;inset:0;background:#080b0f;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .setup-box{background:#121720;border:1px solid #1c2535;border-radius:14px;padding:24px;max-width:460px;width:100%}
 .g-signin{display:flex;align-items:center;gap:10px;background:#fff;color:#333;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.25);white-space:nowrap}
@@ -38,7 +38,7 @@ td{padding:7px 8px;border-bottom:1px solid rgba(28,37,53,0.4);font-size:12px}
 .tabs-wrap::-webkit-scrollbar{display:none}
 .tab-btn{padding:6px 12px;border-radius:5px;cursor:pointer;font-size:10px;letter-spacing:1.5px;font-weight:600;text-transform:uppercase;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a5870;font-family:'DM Mono',monospace;transition:all .15s;flex-shrink:0}
 .tab-btn.active{background:#00e5b012;color:#00e5b0;border-color:rgba(0,229,176,0.35)}
-.inp{background:#161c26;border:1px solid #1c2535;color:#dde3ee;border-radius:5px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:14px;outline:none;width:100%;-webkit-appearance:none;appearance:none}
+.inp{background:#161c26;border:1px solid #1c2535;color:#dde3ee;border-radius:5px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:16px;outline:none;width:100%;-webkit-appearance:none;appearance:none}
 .inp:focus{border-color:#00e5b055}
 .card{background:#121720;border:1px solid #1c2535;border-radius:10px;padding:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -308,6 +308,16 @@ function App(){
   // Price refresh
   useEffect(()=>{ const iv=setInterval(fetchPrices,120000); return()=>clearInterval(iv); },[]);
 
+  // Prevent body scroll on iOS when modal open
+  function lockBody(){ document.body.style.overflow='hidden'; document.body.style.position='fixed'; document.body.style.width='100%'; }
+  function unlockBody(){ document.body.style.overflow=''; document.body.style.position=''; document.body.style.width=''; }
+
+  useEffect(()=>{
+    const anyModal = logLvl!==null||showFree||showAddDebt||showAddCash;
+    if(anyModal) lockBody(); else unlockBody();
+    return ()=>unlockBody();
+  },[logLvl,showFree,showAddDebt,showAddCash]);
+
   function signIn(){
     const cid=clientId||cidInput;
     if(!cid){ setShowSetup(true); return; }
@@ -375,13 +385,27 @@ function App(){
     const q=parseFloat(freeQtyRef.current&&freeQtyRef.current.value)||0;
     setFreeCalc({ppt:q>0?tv/q:0,total:tv,qty:q});
   }
-  function addDebt(name,balance,currency,notes){
+  function addDebt(name,balance,currency,notes,dtype,collateralQty,collateralVal){
     if(!name||!balance) return;
-    setDebts(d=>[...d,{id:uid(),name,balance:parseFloat(balance),currency:currency||"GBP",notes:notes||""}]);
+    const entry={id:uid(),name,balance:parseFloat(balance),currency:currency||"GBP",notes:notes||"",dtype:dtype||"standard"};
+    if(dtype==="dex"){
+      entry.collateralQty=collateralQty||0;
+      entry.collateralVal=collateralVal||0;
+      // Liquidation price = borrowed / (collateral tokens * 0.625)
+      entry.liqPrice=collateralQty>0?parseFloat(balance)/(collateralQty*0.625):0;
+    }
+    setDebts(d=>[...d,entry]);
     setShowAddDebt(false);
   }
   function updDebt(id,field,val){
-    setDebts(d=>d.map(x=>x.id===id?{...x,[field]:field==="balance"?parseFloat(val)||0:val}:x));
+    setDebts(d=>d.map(x=>{
+      if(x.id!==id) return x;
+      const updated={...x,[field]:field==="balance"||field==="collateralQty"||field==="collateralVal"?parseFloat(val)||0:val};
+      if(updated.dtype==="dex"&&updated.collateralQty>0){
+        updated.liqPrice=updated.balance/(updated.collateralQty*0.625);
+      }
+      return updated;
+    }));
   }
   function addCash(type,label,amount,note){
     if(!label||!amount) return;
@@ -554,7 +578,9 @@ function App(){
   const DebtModal=()=>{
     if(!showAddDebt) return null;
     const nameRef=useRef(null),balRef=useRef(null),notesRef=useRef(null);
+    const collateralQtyRef=useRef(null),collateralValRef=useRef(null);
     const [cur,setCur]=useState("GBP");
+    const [dtype,setDtype]=useState("standard");
     return(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowAddDebt(false);}}>
         <div className="modal">
@@ -564,9 +590,19 @@ function App(){
           </div>
           <div style={{padding:"16px"}}>
             <div style={{marginBottom:12}}><Lbl ch="Label"/><input ref={nameRef} type="text" className="inp" placeholder="e.g. Barclaycard, Overdraft..."/></div>
+            {/* Debt type */}
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {[{v:"standard",l:"STANDARD",s:"Credit card, loan etc"},{v:"dex",l:"DEX",s:"Collateral + borrow"}].map(x=>(
+                <button key={x.v} onClick={()=>setDtype(x.v)} style={{flex:1,padding:"10px 8px",borderRadius:6,cursor:"pointer",fontFamily:"inherit",border:"2px solid "+(dtype===x.v?(x.v==="dex"?C.purple:C.accent):C.border),background:dtype===x.v?(x.v==="dex"?C.purple+"15":C.accentDim):"transparent",transition:"all .15s"}}>
+                  <div style={{fontWeight:700,fontSize:11,color:dtype===x.v?(x.v==="dex"?C.purple:C.accent):C.muted,letterSpacing:1}}>{x.l}</div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:2}}>{x.s}</div>
+                </button>
+              ))}
+            </div>
+
             <div className="grid2" style={{marginBottom:12}}>
               <div>
-                <Lbl ch="Balance"/>
+                <Lbl ch={dtype==="dex"?"Borrowed Amount (debt)":"Balance"}/>
                 <input ref={balRef} type="number" inputMode="decimal" className="inp" placeholder="0.00"/>
               </div>
               <div>
@@ -580,8 +616,28 @@ function App(){
                 </div>
               </div>
             </div>
+
+            {dtype==="dex"&&(
+              <div>
+                <div style={{background:C.purple+"10",border:"1px solid "+C.purple+"30",borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.purple}}>
+                  Liquidation triggers at 62.5% of position value — enter your collateral details below
+                </div>
+                <div className="grid2" style={{marginBottom:12}}>
+                  <div><Lbl ch="Collateral Tokens (FLR)"/><input ref={collateralQtyRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="e.g. 1000000"/></div>
+                  <div><Lbl ch="Collateral Value ($)"/><input ref={collateralValRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="e.g. 6800.00"/></div>
+                </div>
+              </div>
+            )}
+
             <div style={{marginBottom:14}}><Lbl ch="Notes"/><input ref={notesRef} type="text" className="inp" placeholder="Interest rate, priority..."/></div>
-            <button onClick={()=>addDebt(nameRef.current&&nameRef.current.value,balRef.current&&balRef.current.value,cur,notesRef.current&&notesRef.current.value)} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12,width:"100%"}}>
+            <button onClick={()=>{
+              const name=nameRef.current&&nameRef.current.value;
+              const bal=balRef.current&&balRef.current.value;
+              const notes=notesRef.current&&notesRef.current.value;
+              const cqty=dtype==="dex"&&collateralQtyRef.current?parseFloat(collateralQtyRef.current.value)||0:0;
+              const cval=dtype==="dex"&&collateralValRef.current?parseFloat(collateralValRef.current.value)||0:0;
+              addDebt(name,bal,cur,notes,dtype,cqty,cval);
+            }} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12,width:"100%"}}>
               SAVE
             </button>
           </div>
@@ -761,6 +817,53 @@ function App(){
               ))}
             </div>
 
+            {debts.some(d=>d.dtype==="dex")&&(
+              <div className="card" style={{marginBottom:12,borderColor:C.purple+"40"}}>
+                <div className="lbl" style={{marginBottom:12,color:C.purple}}>DEX POSITIONS</div>
+                {debts.filter(d=>d.dtype==="dex").map((d,i)=>{
+                  const liq=d.liqPrice||0;
+                  const dist=liq>0&&flrPrice>0?((liq-flrPrice)/flrPrice)*100:null;
+                  const atRisk=liq>flrPrice;
+                  return(
+                    <div key={d.id} style={{marginBottom:i<debts.filter(x=>x.dtype==="dex").length-1?14:0}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
+                        <div style={{fontWeight:700}}>{d.name}</div>
+                        <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{fontSize:10,color:C.muted}}>Borrowed: <span style={{color:C.red,fontWeight:600}}>{d.currency==="GBP"?fmtP(d.balance):fmtU(d.balance)}</span></span>
+                          <span style={{fontSize:10,color:C.muted}}>Collateral: <span style={{color:C.gold}}>{d.collateralQty?fmtT(d.collateralQty)+" FLR":d.collateralVal?"≈ "+fmtU(d.collateralVal):"—"}</span></span>
+                        </div>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"10px 12px",background:atRisk?C.red+"08":C.purple+"08",borderRadius:8,border:"1px solid "+(atRisk?C.red+"30":C.purple+"25")}}>
+                        <div>
+                          <div className="lbl">LIQ PRICE</div>
+                          <div style={{fontSize:18,fontWeight:700,color:atRisk?C.red:C.purple}}>${liq.toFixed(6)}</div>
+                          <div style={{fontSize:9,color:C.muted}}>at 62.5% position</div>
+                        </div>
+                        <div>
+                          <div className="lbl">CURRENT PRICE</div>
+                          <div style={{fontSize:18,fontWeight:700,color:C.gold}}>${flrPrice.toFixed(6)}</div>
+                        </div>
+                        <div>
+                          <div className="lbl">DISTANCE</div>
+                          <div style={{fontSize:18,fontWeight:700,color:atRisk?C.red:C.accent}}>
+                            {dist!==null?(dist>0?"▲ ":"▼ ")+fmt(Math.abs(dist),1)+"%":"—"}
+                          </div>
+                          <div style={{fontSize:9,color:atRisk?C.red:C.muted}}>{atRisk?"⚠ ABOVE — AT RISK":"safe"}
+                          </div>
+                        </div>
+                      </div>
+                      {d.collateralQty>0&&liq>0&&(
+                        <div style={{marginTop:8}}>
+                          <Bar pct={Math.min(100,(flrPrice/liq)*100)} color={atRisk?C.red:C.accent} h={4}/>
+                          <div style={{fontSize:9,color:C.muted,marginTop:3}}>Current price as % of liquidation price ({fmt((flrPrice/liq)*100,0)}%)</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {debts.length>0&&(
               <div className="card">
                 <div className="lbl" style={{marginBottom:12}}>DEBT COVERAGE</div>
@@ -850,11 +953,26 @@ function App(){
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <div style={{flex:1,minWidth:100,fontWeight:600,fontSize:14}}>{d.name}</div>
                       <Tag color={d.currency==="GBP"?C.gold:C.blue} ch={d.currency}/>
+                      {d.dtype==="dex"&&<Tag color={C.purple} ch="DEX"/>}
                       <input type="number" className="inp" style={{width:110,color:hue,fontWeight:700,fontSize:16,textAlign:"right"}} defaultValue={d.balance} onBlur={e=>updDebt(d.id,"balance",e.target.value)}/>
                       <button onClick={()=>setExpandedDebt(isExp?null:d.id)} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>{isExp?"▲":"▼"}</button>
                       <button onClick={()=>setDebts(prev=>prev.filter(x=>x.id!==d.id))} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>✕</button>
                     </div>
                     {d.currency==="GBP"&&<div style={{fontSize:10,color:C.muted,marginTop:4}}>≈ {fmtU(balUSD)} at {rateLabel||"loading rate..."}</div>}
+                    {d.dtype==="dex"&&d.liqPrice>0&&(
+                      <div style={{marginTop:6,padding:"6px 10px",background:d.liqPrice>flrPrice?C.red+"15":C.purple+"10",border:"1px solid "+(d.liqPrice>flrPrice?C.red+"50":C.purple+"30"),borderRadius:6,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                        <div>
+                          <span style={{fontSize:9,color:C.muted,letterSpacing:1,marginRight:8}}>LIQ PRICE</span>
+                          <span style={{fontWeight:700,color:d.liqPrice>flrPrice?C.red:C.purple}}>${(d.liqPrice||0).toFixed(6)}</span>
+                        </div>
+                        <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                          <span style={{fontSize:10,color:C.muted}}>{d.collateralQty?fmtT(d.collateralQty)+" FLR collateral":""}</span>
+                          <span style={{fontSize:12,fontWeight:700,color:d.liqPrice>flrPrice?C.red:C.accent}}>
+                            {d.liqPrice>flrPrice?"⚠ ":"✓ "}{d.liqPrice>0&&flrPrice>0?fmt(Math.abs((d.liqPrice-flrPrice)/flrPrice)*100,1)+"%":"—"} {d.liqPrice>flrPrice?"ABOVE":"below"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div style={{marginTop:10}}>
                       <Bar pct={pct} color={hue}/>
                       <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
@@ -874,6 +992,40 @@ function App(){
                             ))}
                           </div>
                         </div>
+                        {d.dtype==="dex"&&(
+                          <div>
+                            <div style={{background:C.purple+"10",border:"1px solid "+C.purple+"30",borderRadius:6,padding:"10px 12px",marginBottom:8}}>
+                              <div style={{fontSize:9,color:C.purple,letterSpacing:2,marginBottom:8}}>DEX POSITION</div>
+                              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                                <div><Lbl ch="Collateral Tokens"/><input type="number" inputMode="decimal" className="inp" style={{color:C.gold}} defaultValue={d.collateralQty||""} onBlur={e=>updDebt(d.id,"collateralQty",e.target.value)}/></div>
+                                <div><Lbl ch="Collateral Value ($)"/><input type="number" inputMode="decimal" className="inp" style={{color:C.gold}} defaultValue={d.collateralVal||""} onBlur={e=>updDebt(d.id,"collateralVal",e.target.value)}/></div>
+                              </div>
+                              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                                <div>
+                                  <div className="lbl">BORROWED</div>
+                                  <div style={{fontSize:15,fontWeight:700,color:C.red}}>{d.currency==="GBP"?fmtP(d.balance):fmtU(d.balance)}</div>
+                                </div>
+                                <div>
+                                  <div className="lbl">LIQ PRICE (FLR)</div>
+                                  <div style={{fontSize:15,fontWeight:700,color:d.liqPrice>flrPrice?C.red:C.accent}}>${(d.liqPrice||0).toFixed(6)}</div>
+                                  <div style={{fontSize:9,color:C.muted,marginTop:2}}>at 62.5% of position</div>
+                                </div>
+                                <div>
+                                  <div className="lbl">DISTANCE</div>
+                                  <div style={{fontSize:15,fontWeight:700,color:d.liqPrice>flrPrice?C.red:C.accent}}>
+                                    {d.liqPrice>0&&flrPrice>0?(d.liqPrice>flrPrice?"▲ ":"▼ ")+fmt(Math.abs((d.liqPrice-flrPrice)/flrPrice)*100,1)+"%":"—"}
+                                  </div>
+                                  <div style={{fontSize:9,color:C.muted,marginTop:2}}>{d.liqPrice>flrPrice?"ABOVE current":"below current"}</div>
+                                </div>
+                              </div>
+                              {d.liqPrice>flrPrice&&(
+                                <div style={{marginTop:10,padding:"6px 10px",background:C.red+"15",border:"1px solid "+C.red+"40",borderRadius:5,fontSize:11,color:C.red}}>
+                                  ⚠ Current price is above liquidation level — position at risk
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div><Lbl ch="Notes"/><input type="text" className="inp" style={{color:C.muted}} defaultValue={d.notes||""} onBlur={e=>updDebt(d.id,"notes",e.target.value)}/></div>
                       </div>
                     )}
