@@ -162,6 +162,10 @@ function App(){
   const [debts,setDebts]=useState([]);
   // cashItems: { id, type: "deployed"|"addition", label, amount, note, date }
   const [cashItems,setCashItems]=useState([]);
+  // freeTrades: { id, type:"sell"|"buy", label, totalValue, qty, pricePerToken, note, date }
+  const [freeTrades,setFreeTrades]=useState([]);
+  const [showFreeModal,setShowFreeModal]=useState(false);
+  const [newFree,setNewFree]=useState({type:"sell",label:"",totalValue:"",qty:"",note:""});
   const [currentPrice,setCurrentPrice]=useState(0.0068);
   const [priceChange,setPriceChange]=useState(null);
   const [lastFetch,setLastFetch]=useState(null);
@@ -207,6 +211,7 @@ function App(){
           if(d.cashItems)setCashItems(d.cashItems);
           // migrate old cashDeployed if present
           else if(d.cashDeployed)setCashItems(d.cashDeployed.map(c=>({...c,type:"deployed"})));
+          if(d.freeTrades)setFreeTrades(d.freeTrades);
           if(d.currentPrice)setCurrentPrice(d.currentPrice);
           setDriveMsg("Loaded ✓");setDriveStatus("saved");
         }else{setDriveMsg("New — saves on next change");setDriveStatus("idle");}
@@ -229,6 +234,7 @@ function App(){
         if(d.debts)setDebts(d.debts);
         if(d.cashItems)setCashItems(d.cashItems);
         else if(d.cashDeployed)setCashItems(d.cashDeployed.map(c=>({...c,type:"deployed"})));
+        if(d.freeTrades)setFreeTrades(d.freeTrades);
         if(d.currentPrice)setCurrentPrice(d.currentPrice);
       }
     }catch{}
@@ -239,7 +245,7 @@ function App(){
   // Auto-save
   useEffect(()=>{
     if(!loaded)return;
-    const data={levels,debts,cashItems,currentPrice};
+    const data={levels,debts,cashItems,freeTrades,currentPrice};
     localStorage.setItem("flr_data",JSON.stringify(data));
     if(!authToken)return;
     if(saveTimer.current)clearTimeout(saveTimer.current);
@@ -251,7 +257,7 @@ function App(){
         setDriveStatus("saved");setDriveMsg("Saved to Drive ✓");
       }catch{setDriveStatus("error");setDriveMsg("Save failed");}
     },3000);
-  },[levels,debts,cashItems,currentPrice,loaded]);
+  },[levels,debts,cashItems,freeTrades,currentPrice,loaded]);
 
   // Price refresh
   useEffect(()=>{
@@ -275,13 +281,24 @@ function App(){
   }
 
   // ── Derived calculations ──
-  const TOTAL_TOKENS=5857761;
+  const TOTAL_TOKENS=6149588;
   const lws=levels.map(l=>({...l,...calcLevelStats(l)}));
 
-  const totalSellProceeds = lws.reduce((a,l)=>a+l.sellProceeds,0);
-  const totalBuyCost      = lws.reduce((a,l)=>a+l.buyCost,0);
-  const totalSoldQty      = lws.reduce((a,l)=>a+l.soldQty,0);
-  const totalBoughtQty    = lws.reduce((a,l)=>a+l.boughtQty,0);
+  const levelSellProceeds = lws.reduce((a,l)=>a+l.sellProceeds,0);
+  const levelBuyCost      = lws.reduce((a,l)=>a+l.buyCost,0);
+  const levelSoldQty      = lws.reduce((a,l)=>a+l.soldQty,0);
+  const levelBoughtQty    = lws.reduce((a,l)=>a+l.boughtQty,0);
+
+  // Free trades (unaligned to plan levels)
+  const freeSellProceeds  = freeTrades.filter(t=>t.type==="sell").reduce((a,t)=>a+(parseFloat(t.totalValue)||0),0);
+  const freeBuyCost       = freeTrades.filter(t=>t.type==="buy").reduce((a,t)=>a+(parseFloat(t.totalValue)||0),0);
+  const freeSoldQty       = freeTrades.filter(t=>t.type==="sell").reduce((a,t)=>a+(parseFloat(t.qty)||0),0);
+  const freeBoughtQty     = freeTrades.filter(t=>t.type==="buy").reduce((a,t)=>a+(parseFloat(t.qty)||0),0);
+
+  const totalSellProceeds = levelSellProceeds + freeSellProceeds;
+  const totalBuyCost      = levelBuyCost + freeBuyCost;
+  const totalSoldQty      = levelSoldQty + freeSoldQty;
+  const totalBoughtQty    = levelBoughtQty + freeBoughtQty;
   const tokensHeld        = TOTAL_TOKENS - totalSoldQty + totalBoughtQty;
 
   const cashDeployedTotal   = cashItems.filter(c=>c.type==="deployed").reduce((a,c)=>a+(parseFloat(c.amount)||0),0);
@@ -310,7 +327,15 @@ function App(){
   function removeTrade(li,tid){
     setLevels(prev=>{const n=[...prev];n[li]={...n[li],trades:n[li].trades.filter(t=>t.id!==tid)};return n;});
   }
-  function addDebt(){
+  function addFreeTrade(){
+    const tv=parseFloat(newFree.totalValue), q=parseFloat(newFree.qty);
+    if(!tv||!q||q<=0)return;
+    const ppt=tv/q;
+    setFreeTrades(f=>[...f,{id:uid(),type:newFree.type,label:newFree.label||`${newFree.type==="sell"?"Sell":"Buy"} ${fmtTok(q)} FLR`,totalValue:tv,qty:q,pricePerToken:ppt,note:newFree.note,date:new Date().toISOString().slice(0,10)}]);
+    setNewFree({type:"sell",label:"",totalValue:"",qty:"",note:""});
+    setShowFreeModal(false);
+  }
+  function removeFreeTrade(id){setFreeTrades(f=>f.filter(x=>x.id!==id));}
     if(!newDebt.name||!newDebt.balance)return;
     setDebts(d=>[...d,{id:uid(),name:newDebt.name,balance:parseFloat(newDebt.balance),notes:newDebt.notes}]);
     setNewDebt({name:"",balance:"",notes:""});setShowAddDebt(false);
@@ -499,6 +524,7 @@ function App(){
         <TabBtn id="sells" label="Sell Plan"/>
         <TabBtn id="debts" label="Debts"/>
         <TabBtn id="cash" label="Cash"/>
+        <TabBtn id="history" label="Trade History"/>
       </div>
 
       <div style={{padding:20,maxWidth:980,margin:"0 auto"}}>
@@ -608,6 +634,7 @@ function App(){
             <span style={{fontSize:11,color:C.muted}}>
               Guide levels · log at actual execution price · Sells: <span style={{color:C.accent}}>{fmtUSD(totalSellProceeds)}</span>
               {totalBuyCost>0&&<> · Buys: <span style={{color:C.red}}>{fmtUSD(totalBuyCost)}</span></>}
+              {freeTrades.length>0&&<> · <span style={{color:C.purple}}>{freeTrades.length} unplanned trade{freeTrades.length!==1?"s":""}</span></>}
               {" · "}{ld.filter(l=>l.netQty>=l.tokens).length} levels complete
             </span>
             <span style={{fontSize:11,color:C.muted}}>tap row → log actual trade</span>
@@ -741,7 +768,156 @@ function App(){
           </div>
         </>}
 
+        {/* ══ TRADE HISTORY ══ */}
+        {tab==="history"&&<>
+          {/* Summary bar */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+            {[
+              {label:"TOTAL SELLS",val:fmtUSD(totalSellProceeds),sub:`${fmtTok(totalSoldQty)} tokens`,color:C.accent},
+              {label:"TOTAL BUYS",val:fmtUSD(totalBuyCost),sub:`${fmtTok(totalBoughtQty)} tokens`,color:C.red},
+              {label:"NET PROCEEDS",val:fmtUSD(totalSellProceeds-totalBuyCost),sub:"sells minus buys",color:totalSellProceeds-totalBuyCost>=0?C.accent:C.red},
+              {label:"UNPLANNED",val:`${freeTrades.length}`,sub:`${freeTrades.filter(t=>t.type==="sell").length} sells · ${freeTrades.filter(t=>t.type==="buy").length} buys`,color:C.purple},
+            ].map(({label,val,sub,color})=>(
+              <div key={label} style={S.card()}>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:6}}>{label}</div>
+                <div style={{fontSize:18,fontWeight:700,color}}>{val}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:3}}>{sub}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* All trades combined — level trades + free trades, sorted by date desc */}
+          {(()=>{
+            // Flatten all level trades with level price context
+            const levelTrades = levels.flatMap(l=>
+              l.trades.map(t=>({...t,source:"plan",guidePrice:l.price,levelLabel:`$${l.price.toFixed(4)} level`}))
+            );
+            // Free trades
+            const freeT = freeTrades.map(t=>({
+              id:t.id, type:t.type, qty:t.qty, price:t.pricePerToken,
+              totalValue:t.totalValue, date:t.date, note:t.note,
+              source:"free", levelLabel:t.label||"Unplanned", guidePrice:null,
+            }));
+            const all=[...levelTrades,...freeT].sort((a,b)=>b.date.localeCompare(a.date));
+
+            if(all.length===0) return <div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No trades logged yet.</div>;
+
+            // Group by date
+            const byDate={};
+            all.forEach(t=>{ if(!byDate[t.date])byDate[t.date]=[]; byDate[t.date].push(t); });
+
+            return Object.entries(byDate).map(([date,trades])=>(
+              <div key={date} style={{marginBottom:16}}>
+                <div style={{fontSize:10,color:C.muted,letterSpacing:2,marginBottom:8,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>{date}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {trades.map(t=>{
+                    const isSell=t.type==="sell";
+                    const value=t.totalValue||t.qty*t.price;
+                    const ppt=t.price;
+                    return(
+                      <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:C.card,borderRadius:8,border:`1px solid ${C.border}`,borderLeft:`3px solid ${isSell?C.accent:C.red}`,flexWrap:"wrap"}}>
+                        <Tag color={isSell?C.accent:C.red}>{isSell?"SELL":"BUY"}</Tag>
+                        {t.source==="free"&&<Tag color={C.purple}>UNPLANNED</Tag>}
+                        <div style={{flex:1,minWidth:120}}>
+                          <div style={{fontWeight:600,fontSize:12}}>{t.levelLabel}</div>
+                          {t.note&&<div style={{fontSize:10,color:C.muted,fontStyle:"italic",marginTop:2}}>{t.note}</div>}
+                        </div>
+                        <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>QUANTITY</div>
+                            <div style={{fontWeight:600,color:C.gold}}>{fmtTok(t.qty)}</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>PRICE / TOKEN</div>
+                            <div style={{fontWeight:600,color:C.text}}>${ppt.toFixed(6)}</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>TOTAL</div>
+                            <div style={{fontWeight:700,fontSize:15,color:isSell?C.accent:C.red}}>{isSell?"+":"-"}{fmtUSD(value)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ));
+          })()}
+        </>}
+
       </div>
+      {/* ── FREE TRADE MODAL ── */}
+      {showFreeModal&&(
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowFreeModal(false);}}>
+          <div className="modal">
+            <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:16,fontWeight:700,color:C.text}}>Log Unplanned Trade</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:2}}>Not aligned to a guide level — price calculated from totals</div>
+              </div>
+              <Btn onClick={()=>setShowFreeModal(false)} color={C.muted} small>✕</Btn>
+            </div>
+            <div style={{padding:"16px 20px"}}>
+              {/* Type */}
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {["sell","buy"].map(type=>(
+                  <button key={type} onClick={()=>setNewFree(t=>({...t,type}))} style={{flex:1,padding:"10px",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12,letterSpacing:1,border:`2px solid ${newFree.type===type?(type==="sell"?C.accent:C.red):C.border}`,background:newFree.type===type?(type==="sell"?C.accentDim:C.red+"15"):"transparent",color:newFree.type===type?(type==="sell"?C.accent:C.red):C.muted,transition:"all .15s"}}>
+                    {type==="sell"?"▲ SELL":"▼ BUY"}
+                  </button>
+                ))}
+              </div>
+
+              {newFree.type==="buy"&&(
+                <div style={{background:C.red+"10",border:`1px solid ${C.red}30`,borderRadius:6,padding:"8px 12px",marginBottom:14,fontSize:11,color:C.red}}>
+                  Buy cost added to target (money to recover)
+                </div>
+              )}
+
+              <div style={{marginBottom:12}}><Label>Label (optional)</Label><input style={S.inp()} placeholder={`e.g. OTC ${newFree.type}, exchange ${newFree.type}...`} value={newFree.label} onChange={e=>setNewFree(t=>({...t,label:e.target.value}))}/></div>
+
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+                <div>
+                  <Label>Total $ Value</Label>
+                  <input style={S.inp({color:newFree.type==="sell"?C.accent:C.red})} type="number" step="0.01" placeholder="e.g. 1250.00" value={newFree.totalValue} onChange={e=>setNewFree(t=>({...t,totalValue:e.target.value}))}/>
+                </div>
+                <div>
+                  <Label>Token Quantity</Label>
+                  <input style={S.inp({color:C.gold})} type="number" placeholder="e.g. 500000" value={newFree.qty} onChange={e=>setNewFree(t=>({...t,qty:e.target.value}))}/>
+                </div>
+              </div>
+
+              {/* Live calc */}
+              {newFree.totalValue&&newFree.qty&&parseFloat(newFree.qty)>0&&(
+                <div style={{background:C.card2,borderRadius:8,padding:"12px 14px",marginBottom:14,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                  {[
+                    {label:"Price per token",val:`$${(parseFloat(newFree.totalValue)/parseFloat(newFree.qty)).toFixed(6)}`,color:C.gold},
+                    {label:"Total value",val:fmtUSD(parseFloat(newFree.totalValue)),color:newFree.type==="sell"?C.accent:C.red},
+                    {label:"Token qty",val:fmtTok(parseFloat(newFree.qty)),color:C.text},
+                  ].map(({label,val,color})=>(
+                    <div key={label}>
+                      <div style={{fontSize:9,color:C.muted,letterSpacing:1.5,marginBottom:4}}>{label}</div>
+                      <div style={{fontSize:14,fontWeight:700,color}}>{val}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{marginBottom:14}}><Label>Note (optional)</Label><input style={S.inp()} placeholder="Exchange, context, reason..." value={newFree.note} onChange={e=>setNewFree(t=>({...t,note:e.target.value}))}/></div>
+              <Btn onClick={addFreeTrade} color={newFree.type==="sell"?C.accent:C.red}>+ LOG {newFree.type.toUpperCase()}</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── FLOATING BUTTON ── */}
+      <button
+        onClick={()=>setShowFreeModal(true)}
+        title="Log unplanned buy or sell"
+        style={{position:"fixed",bottom:24,right:24,width:52,height:52,borderRadius:"50%",background:`linear-gradient(135deg, ${C.accent}, #00b894)`,border:"none",cursor:"pointer",fontSize:22,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 4px 20px ${C.accent}55`,zIndex:50,transition:"transform .15s"}}
+        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+      >⬡</button>
+
     </div>
   );
 }
