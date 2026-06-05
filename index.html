@@ -190,6 +190,12 @@ function App(){
   const [debts,setDebts]          =useState([]);
   const [cashItems,setCashItems]  =useState([]);
   const [freeTrades,setFreeTrades]=useState([]);
+  // Daily strategy state
+  const [dailyLog,setDailyLog]=useState([]);        // [{id,date,sellPrice,qty,sellValue,status,rebuyPrice,rebuyQty,rebuyDate,resellPrice,resellDate,dismissed}]
+  const [dailySettings,setDailySettings]=useState({amount:100,rebuyPct:2});
+  const [showDailyBanner,setShowDailyBanner]=useState(false);
+  const [showDailyModal,setShowDailyModal]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);
 
   const [flrPrice,setFlrPrice]   =useState(0.0068);
   const [gbpusd,setGbpusd]       =useState(1.27);
@@ -253,8 +259,10 @@ function App(){
     if(d.debts)      setDebts(d.debts);
     if(d.cashItems)  setCashItems(d.cashItems);
     else if(d.cashDeployed) setCashItems(d.cashDeployed.map(c=>({...c,type:"deployed"})));
-    if(d.freeTrades) setFreeTrades(d.freeTrades);
-    if(d.flrPrice)   setFlrPrice(d.flrPrice);
+    if(d.freeTrades)      setFreeTrades(d.freeTrades);
+    if(d.flrPrice)        setFlrPrice(d.flrPrice);
+    if(d.dailyLog)        setDailyLog(d.dailyLog);
+    if(d.dailySettings)   setDailySettings(d.dailySettings);
   }
 
   // Load from Drive
@@ -282,6 +290,14 @@ function App(){
     fetchPrices();
   },[]);
 
+  // Show daily banner once per day on open
+  useEffect(()=>{
+    if(!loaded) return;
+    const td=today();
+    const todayEntry=dailyLog.find(e=>e.date===td);
+    if(!todayEntry) setShowDailyBanner(true);
+  },[loaded]);
+
   async function fetchPrices(){
     const [p,r]=await Promise.all([fetchFLR(),fetchGBPUSD()]);
     if(p){ setPriceChg(prevPrice.current?((p-prevPrice.current)/prevPrice.current)*100:null); prevPrice.current=p; setFlrPrice(p); setLastFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})); }
@@ -291,7 +307,7 @@ function App(){
   // Auto-save
   useEffect(()=>{
     if(!loaded) return;
-    const data={levels,debts,cashItems,freeTrades,flrPrice};
+    const data={levels,debts,cashItems,freeTrades,flrPrice,dailyLog,dailySettings};
     localStorage.setItem("flr_data",JSON.stringify(data));
     if(!authToken) return;
     if(saveTimer.current) clearTimeout(saveTimer.current);
@@ -303,7 +319,7 @@ function App(){
         setDrvStatus("saved"); setDrvMsg("Saved to Drive ✓");
       }catch(e){ setDrvStatus("error"); setDrvMsg("Save failed"); }
     },3000);
-  },[levels,debts,cashItems,freeTrades,flrPrice,loaded]);
+  },[levels,debts,cashItems,freeTrades,flrPrice,dailyLog,dailySettings,loaded]);
 
   // Price refresh
   useEffect(()=>{ const iv=setInterval(fetchPrices,120000); return()=>clearInterval(iv); },[]);
@@ -317,6 +333,50 @@ function App(){
     if(anyModal) lockBody(); else unlockBody();
     return ()=>unlockBody();
   },[logLvl,showFree,showAddDebt,showAddCash]);
+
+  // ── Daily strategy helpers ──
+  function logDailySell(sellPrice){
+    const sp=parseFloat(sellPrice);
+    if(!sp||sp<=0) return;
+    const qty=dailySettings.amount/sp;
+    const rebuyPrice=sp*(1-dailySettings.rebuyPct/100);
+    const entry={id:uid(),date:today(),sellPrice:sp,qty,sellValue:dailySettings.amount,status:"sold",rebuyPrice,rebuyQty:null,rebuyDate:null,resellPrice:null,resellDate:null,dismissed:false};
+    setDailyLog(l=>[...l,entry]);
+    setShowDailyModal(false);
+    setShowDailyBanner(false);
+  }
+  function dismissToday(){
+    const td=today();
+    setDailyLog(l=>[...l,{id:uid(),date:td,dismissed:true,status:"dismissed"}]);
+    setShowDailyBanner(false);
+  }
+  function markRebuyTriggered(id){
+    setDailyLog(l=>l.map(e=>{
+      if(e.id!==id) return e;
+      const rebuyQty=e.sellValue/e.rebuyPrice;
+      return {...e,status:"rebuyed",rebuyQty,rebuyDate:today()};
+    }));
+  }
+  function markResold(id){
+    setDailyLog(l=>l.map(e=>{
+      if(e.id!==id) return e;
+      return {...e,status:"resold",resellPrice:e.sellPrice,resellDate:today()};
+    }));
+  }
+  function undoDailyEntry(id){ setDailyLog(l=>l.filter(e=>e.id!==id)); }
+
+  // Daily P&L calcs
+  const dailyStats=(()=>{
+    const active=dailyLog.filter(e=>!e.dismissed);
+    const totalSellValue=active.reduce((a,e)=>a+(e.sellValue||0),0);
+    const totalRebuySpend=active.filter(e=>e.status==="rebuyed"||e.status==="resold").reduce((a,e)=>a+(e.sellValue||0),0);
+    const totalResellValue=active.filter(e=>e.status==="resold").reduce((a,e)=>a+(e.resellPrice*e.rebuyQty||0),0);
+    const netCash=totalSellValue-totalRebuySpend+totalResellValue;
+    const fullCycles=active.filter(e=>e.status==="resold").length;
+    const pendingRebuys=active.filter(e=>e.status==="sold").length;
+    const pendingResells=active.filter(e=>e.status==="rebuyed").length;
+    return{totalSellValue,totalRebuySpend,totalResellValue,netCash,fullCycles,pendingRebuys,pendingResells,days:active.length};
+  })();
 
   function signIn(){
     const cid=clientId||cidInput;
@@ -727,6 +787,7 @@ function App(){
                 </button>
               )}
               <button onClick={()=>setShowSetup(true)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,marginTop:2,display:"block"}}>⚙ setup</button>
+              <button onClick={()=>setShowSettings(true)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,marginTop:2,display:"block"}}>⚙ daily</button>
             </div>
           </div>
         </div>
@@ -755,9 +816,9 @@ function App(){
 
       {/* Tabs */}
       <div className="tabs-wrap">
-        {["dashboard","sells","debts","cash","history"].map(id=>(
+        {["dashboard","sells","debts","cash","history","daily"].map(id=>(
           <button key={id} className={"tab-btn"+(tab===id?" active":"")} onClick={()=>setTab(id)}>
-            {id==="sells"?"Sell Plan":id.charAt(0).toUpperCase()+id.slice(1)}
+            {id==="sells"?"Sell Plan":id==="daily"?"Daily":id.charAt(0).toUpperCase()+id.slice(1)}
           </button>
         ))}
       </div>
@@ -1137,7 +1198,224 @@ function App(){
             })()}
           </div>
         )}
+        {/* ══ DAILY STRATEGY ══ */}
+        {tab==="daily"&&(
+          <div>
+            {/* Stats summary */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:12}}>
+              {[
+                {l:"NET CASH",v:fmtU(dailyStats.netCash),s:dailyStats.days+" days logged",c:C.accent},
+                {l:"FULL CYCLES",v:String(dailyStats.fullCycles),s:"sell → rebuy → resell",c:C.purple},
+                {l:"PENDING REBUYS",v:String(dailyStats.pendingRebuys),s:"waiting for "+dailySettings.rebuyPct+"% drop",c:C.blue},
+                {l:"PENDING RESELLS",v:String(dailyStats.pendingResells),s:"rebuy filled, waiting recovery",c:C.gold},
+              ].map(x=>(
+                <div key={x.l} className="card">
+                  <div className="lbl">{x.l}</div>
+                  <div style={{fontSize:18,fontWeight:700,color:x.c}}>{x.v}</div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:3}}>{x.s}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Log today button */}
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              {(()=>{
+                const td=today();
+                const todayEntry=dailyLog.find(e=>e.date===td&&!e.dismissed);
+                const todayDismissed=dailyLog.find(e=>e.date===td&&e.dismissed);
+                if(todayDismissed) return <div style={{flex:1,padding:"12px 14px",background:C.card2,borderRadius:8,fontSize:11,color:C.muted,textAlign:"center"}}>Today skipped · <button onClick={()=>{setDailyLog(l=>l.filter(e=>!(e.date===td&&e.dismissed)));setShowDailyBanner(true);}} style={{background:"transparent",border:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:11}}>undo</button></div>;
+                if(todayEntry) return <div style={{flex:1,padding:"12px 14px",background:C.accentDim,borderRadius:8,border:"1px solid "+C.accent+"40",fontSize:11,color:C.accent,textAlign:"center"}}>✓ Today's sell logged at ${todayEntry.sellPrice.toFixed(6)}</div>;
+                return(
+                  <>
+                    <button onClick={()=>setShowDailyModal(true)} style={{flex:1,background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:8,padding:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12}}>+ LOG TODAY'S SELL</button>
+                    <button onClick={dismissToday} style={{background:C.card,border:"1px solid "+C.border,color:C.muted,borderRadius:8,padding:"12px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:11}}>SKIP</button>
+                  </>
+                );
+              })()}
+              <button onClick={()=>setShowSettings(true)} style={{background:C.card,border:"1px solid "+C.border,color:C.muted,borderRadius:8,padding:"12px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:11}}>⚙</button>
+            </div>
+
+            {/* Log entries */}
+            {dailyLog.length===0&&<div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No entries yet — log today's sell to start tracking.</div>}
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[...dailyLog].filter(e=>!e.dismissed).reverse().map(e=>{
+                const statusColor={sold:C.blue,rebuyed:C.gold,resold:C.accent,dismissed:C.muted}[e.status]||C.muted;
+                const statusLabel={sold:"SOLD — AWAITING REBUY",rebuyed:"REBUYED — AWAITING RESELL",resold:"FULL CYCLE COMPLETE",dismissed:"SKIPPED"}[e.status]||e.status.toUpperCase();
+                const cycleProfit=e.status==="resold"?((e.rebuyQty||0)*e.sellPrice-e.sellValue):null;
+                return(
+                  <div key={e.id} className="card" style={{borderLeft:"3px solid "+statusColor}}>
+                    {/* Header */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{e.date}</div>
+                        <Tag color={statusColor} ch={statusLabel}/>
+                      </div>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        {cycleProfit!==null&&<span style={{fontWeight:700,color:C.accent,fontSize:13}}>+{fmtU(cycleProfit)} profit</span>}
+                        <button onClick={()=>undoDailyEntry(e.id)} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:4,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✕</button>
+                      </div>
+                    </div>
+
+                    {/* Sell info */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:10}}>
+                      <div><div className="lbl">SOLD AT</div><div style={{fontWeight:700,color:C.gold}}>${e.sellPrice.toFixed(6)}</div></div>
+                      <div><div className="lbl">TOKENS</div><div style={{fontWeight:700,color:C.text}}>{fmt(e.qty,0)}</div></div>
+                      <div><div className="lbl">VALUE</div><div style={{fontWeight:700,color:C.accent}}>{fmtU(e.sellValue)}</div></div>
+                    </div>
+
+                    {/* Rebuy target / info */}
+                    {e.status==="sold"&&(
+                      <div style={{background:C.blue+"10",border:"1px solid "+C.blue+"30",borderRadius:6,padding:"10px 12px",marginBottom:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <div>
+                            <div className="lbl">REBUY TARGET</div>
+                            <div style={{fontWeight:700,fontSize:16,color:C.blue}}>${e.rebuyPrice.toFixed(6)}</div>
+                            <div style={{fontSize:10,color:C.muted,marginTop:2}}>
+                              {dailySettings.rebuyPct}% below sell · would get {fmt(e.sellValue/e.rebuyPrice,0)} tokens
+                            </div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div className="lbl">VS CURRENT</div>
+                            <div style={{fontWeight:700,color:flrPrice<=e.rebuyPrice?C.accent:C.muted,fontSize:13}}>
+                              {flrPrice<=e.rebuyPrice?"✓ AT TARGET":"$"+(flrPrice-e.rebuyPrice).toFixed(6)+" above"}
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={()=>markRebuyTriggered(e.id)} style={{marginTop:10,width:"100%",background:C.blue+"18",border:"1px solid "+C.blue+"55",color:C.blue,borderRadius:5,padding:"8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>
+                          ✓ MARK REBUY TRIGGERED
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Rebuy filled — show resell target */}
+                    {e.status==="rebuyed"&&(
+                      <div style={{background:C.gold+"10",border:"1px solid "+C.gold+"30",borderRadius:6,padding:"10px 12px",marginBottom:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <div>
+                            <div className="lbl">REBUYED AT</div>
+                            <div style={{fontWeight:700,fontSize:16,color:C.gold}}>${e.rebuyPrice.toFixed(6)}</div>
+                            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{fmt(e.rebuyQty||0,0)} tokens · {e.rebuyDate}</div>
+                          </div>
+                          <div style={{textAlign:"right"}}>
+                            <div className="lbl">RESELL TARGET</div>
+                            <div style={{fontWeight:700,fontSize:16,color:C.accent}}>${e.sellPrice.toFixed(6)}</div>
+                            <div style={{fontSize:10,color:C.muted,marginTop:2}}>
+                              {flrPrice>=e.sellPrice?"✓ AT TARGET":"$"+(e.sellPrice-flrPrice).toFixed(6)+" away"}
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={()=>markResold(e.id)} style={{marginTop:10,width:"100%",background:C.accent+"18",border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"8px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>
+                          ✓ MARK RESOLD (FULL CYCLE)
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Full cycle complete */}
+                    {e.status==="resold"&&(
+                      <div style={{background:C.accent+"08",border:"1px solid "+C.accent+"25",borderRadius:6,padding:"10px 12px"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                          <div><div className="lbl">REBUYED AT</div><div style={{fontWeight:700,color:C.gold}}>${e.rebuyPrice.toFixed(6)}</div></div>
+                          <div><div className="lbl">RESOLD AT</div><div style={{fontWeight:700,color:C.accent}}>${e.sellPrice.toFixed(6)}</div></div>
+                          <div><div className="lbl">CYCLE PROFIT</div><div style={{fontWeight:700,color:C.accent}}>{cycleProfit!==null?"+"+fmtU(cycleProfit):"—"}</div></div>
+                        </div>
+                        <div style={{fontSize:10,color:C.muted,marginTop:6}}>Extra tokens from spread: {fmt((e.rebuyQty||0)-e.qty,0)} · resold {e.resellDate}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
       </div>
+
+      {/* ── DAILY BANNER ── */}
+      {showDailyBanner&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:90,background:"linear-gradient(135deg,"+C.purple+","+C.blue+")",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:13}}>Daily sell reminder</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.75)",marginTop:2}}>Target: sell ${dailySettings.amount} worth of FLR today · Current price: ${flrPrice.toFixed(6)}</div>
+            <div style={{fontSize:11,color:"rgba(255,255,255,0.75)"}}>≈ {fmt(dailySettings.amount/flrPrice,0)} tokens · Rebuy target if filled: ${(flrPrice*(1-dailySettings.rebuyPct/100)).toFixed(6)}</div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowDailyModal(true)} style={{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.4)",color:"#fff",borderRadius:6,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11}}>LOG IT</button>
+            <button onClick={dismissToday} style={{background:"transparent",border:"1px solid rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.7)",borderRadius:6,padding:"8px 14px",cursor:"pointer",fontFamily:"inherit",fontSize:11}}>SKIP TODAY</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── DAILY LOG MODAL ── */}
+      {showDailyModal&&(
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowDailyModal(false);}}>
+          <div className="modal">
+            <div className="sect" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:15}}>Log Today's Sell</div>
+                <div style={{fontSize:11,color:C.muted,marginTop:2}}>{today()} · target ${dailySettings.amount}</div>
+              </div>
+              <button onClick={()=>setShowDailyModal(false)} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:5,padding:"5px 12px",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:"16px"}}>
+              {(()=>{
+                const priceRef=React.useRef(null);
+                const calcTokens=()=>{
+                  const p=parseFloat(priceRef.current&&priceRef.current.value)||flrPrice;
+                  return{tokens:fmt(dailySettings.amount/p,0),rebuy:"$"+(p*(1-dailySettings.rebuyPct/100)).toFixed(6),resell:"$"+p.toFixed(6)};
+                };
+                const [preview,setPreview]=React.useState(()=>({tokens:fmt(dailySettings.amount/flrPrice,0),rebuy:"$"+(flrPrice*(1-dailySettings.rebuyPct/100)).toFixed(6),resell:"$"+flrPrice.toFixed(6)}));
+                return(
+                  <div>
+                    <div style={{marginBottom:14}}>
+                      <Lbl ch="Actual sell price ($)"/>
+                      <input ref={priceRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold,fontSize:18}} placeholder={flrPrice.toFixed(6)} defaultValue={flrPrice.toFixed(6)}
+                        onChange={e=>{const p=parseFloat(e.target.value)||flrPrice;setPreview({tokens:fmt(dailySettings.amount/p,0),rebuy:"$"+(p*(1-dailySettings.rebuyPct/100)).toFixed(6),resell:"$"+p.toFixed(6)});}}
+                      />
+                    </div>
+                    <div style={{background:C.card2,borderRadius:8,padding:"12px 14px",marginBottom:14,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                      {[{l:"SELL VALUE",v:"$"+dailySettings.amount,c:C.accent},{l:"TOKENS SOLD",v:preview.tokens,c:C.gold},{l:"REBUY TARGET",v:preview.rebuy,c:C.blue}].map(x=>(
+                        <div key={x.l}><div className="lbl">{x.l}</div><div style={{fontSize:14,fontWeight:700,color:x.c}}>{x.v}</div></div>
+                      ))}
+                    </div>
+                    <div style={{background:C.purple+"10",border:"1px solid "+C.purple+"30",borderRadius:6,padding:"8px 12px",marginBottom:14,fontSize:11,color:C.purple}}>
+                      If price drops {dailySettings.rebuyPct}% → rebuy at {preview.rebuy} · then wait for price to recover to {preview.resell} to resell
+                    </div>
+                    <button onClick={()=>logDailySell(priceRef.current?priceRef.current.value:flrPrice)} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,width:"100%",letterSpacing:1}}>
+                      CONFIRM SELL
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SETTINGS MODAL ── */}
+      {showSettings&&(
+        <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setShowSettings(false);}}>
+          <div className="modal">
+            <div className="sect" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontWeight:700,fontSize:15}}>Daily Strategy Settings</div>
+              <button onClick={()=>setShowSettings(false)} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:5,padding:"5px 12px",cursor:"pointer"}}>✕</button>
+            </div>
+            <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
+              <div>
+                <Lbl ch="Daily sell amount ($)"/>
+                <input type="number" inputMode="decimal" className="inp" style={{color:C.accent,fontSize:18}} defaultValue={dailySettings.amount}
+                  onBlur={e=>setDailySettings(s=>({...s,amount:parseFloat(e.target.value)||100}))}/>
+              </div>
+              <div>
+                <Lbl ch="Rebuy % below sell price"/>
+                <input type="number" inputMode="decimal" className="inp" style={{color:C.blue}} defaultValue={dailySettings.rebuyPct}
+                  onBlur={e=>setDailySettings(s=>({...s,rebuyPct:parseFloat(e.target.value)||2}))}/>
+                <div style={{fontSize:10,color:C.muted,marginTop:4}}>e.g. 2 = rebuy 2% below sell price, resell when price recovers to original level</div>
+              </div>
+              <button onClick={()=>setShowSettings(false)} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"10px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12}}>SAVE</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <button className="fab" onClick={()=>setShowFree(true)} title="Log unplanned trade">+</button>
     </div>
