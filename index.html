@@ -9,471 +9,439 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #080b0f; color: #dde3ee; font-family: 'DM Mono', monospace; font-size: 13px; }
-  input, select, button { font-family: 'DM Mono', monospace; }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #0d1017; }
-  ::-webkit-scrollbar-thumb { background: #1c2535; border-radius: 3px; }
-  select option { background: #121720; color: #dde3ee; }
-
-  /* Google Sign-in button */
-  .g-signin { display:flex; align-items:center; gap:10px; background:#fff; color:#333; border:none; border-radius:6px; padding:10px 18px; cursor:pointer; font-size:14px; font-weight:600; box-shadow:0 2px 8px #0004; }
-  .g-signin:hover { background:#f5f5f5; }
-  .g-signin svg { width:20px; height:20px; flex-shrink:0; }
-
-  /* Setup overlay */
-  .setup-overlay { position:fixed; inset:0; background:#080b0f; z-index:200; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .setup-box { background:#121720; border:1px solid #1c2535; border-radius:14px; padding:32px; max-width:480px; width:100%; }
-
-  /* Modal */
-  .modal-bg { position:fixed; inset:0; background:#000c; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; }
-  .modal { background:#0d1017; border:1px solid #1c2535; border-radius:12px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; }
-
-  /* Tables */
-  table { width:100%; border-collapse:collapse; }
-  th { text-align:left; font-size:9px; letter-spacing:2px; color:#4a5870; text-transform:uppercase; padding:8px 10px; border-bottom:1px solid #1c2535; white-space:nowrap; }
-  td { padding:8px 10px; border-bottom:1px solid #1c253510; }
-  tr:hover td { background:#ffffff08; }
-
-  /* Animations */
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-  .pulse { animation: pulse 1.5s infinite; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:#080b0f; color:#dde3ee; font-family:'DM Mono',monospace; font-size:13px; }
+input,select,button { font-family:'DM Mono',monospace; }
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:#0d1017; }
+::-webkit-scrollbar-thumb { background:#1c2535; border-radius:3px; }
+select option { background:#121720; color:#dde3ee; }
+table { width:100%; border-collapse:collapse; }
+th { text-align:left; font-size:9px; letter-spacing:2px; color:#4a5870; text-transform:uppercase; padding:8px 10px; border-bottom:1px solid #1c2535; white-space:nowrap; }
+td { padding:8px 10px; border-bottom:1px solid #1c253510; }
+tr.clickable:hover td { background:#ffffff08; cursor:pointer; }
+.modal-bg { position:fixed; inset:0; background:#000c; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; }
+.modal { background:#0d1017; border:1px solid #1c2535; border-radius:12px; width:100%; max-width:580px; max-height:90vh; overflow-y:auto; }
+.setup-overlay { position:fixed; inset:0; background:#080b0f; z-index:200; display:flex; align-items:center; justify-content:center; padding:24px; }
+.setup-box { background:#121720; border:1px solid #1c2535; border-radius:14px; padding:32px; max-width:480px; width:100%; }
+.g-signin { display:flex; align-items:center; gap:10px; background:#fff; color:#333; border:none; border-radius:6px; padding:9px 16px; cursor:pointer; font-size:13px; font-weight:600; box-shadow:0 2px 8px #0004; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.pulse { animation:pulse 1.5s infinite; }
 </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel">
-const { useState, useEffect, useRef, useCallback } = React;
+const { useState, useEffect, useRef } = React;
 
-// ─── CONFIG — FILL IN YOUR GOOGLE CLIENT ID ───────────────────────────────
-// 1. Go to https://console.cloud.google.com/
-// 2. Create a project → APIs & Services → Enable "Google Drive API"
-// 3. Credentials → Create → OAuth 2.0 Client ID → Web application
-// 4. Add "Authorised JavaScript origins": use file:// for local, or your domain
-// 5. Paste the Client ID below
 const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID_HERE";
-// ─────────────────────────────────────────────────────────────────────────
-
 const DRIVE_FILENAME = "flare-tracker-data.json";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 const INITIAL_SELLS = [
-  { price: 0.0100, pct: 0.46, tokens: 27146 },
-  { price: 0.0110, pct: 0.70, tokens: 40719 },
-  { price: 0.0120, pct: 0.93, tokens: 54292 },
-  { price: 0.0130, pct: 1.16, tokens: 67938 },
-  { price: 0.0140, pct: 1.39, tokens: 81511 },
-  { price: 0.0150, pct: 1.62, tokens: 95084 },
-  { price: 0.0160, pct: 1.86, tokens: 108730 },
-  { price: 0.0170, pct: 2.09, tokens: 122303 },
-  { price: 0.0180, pct: 2.32, tokens: 135876 },
-  { price: 0.0190, pct: 2.55, tokens: 149449 },
-  { price: 0.0200, pct: 2.78, tokens: 163095 },
-  { price: 0.0210, pct: 3.02, tokens: 176668 },
-  { price: 0.0220, pct: 3.25, tokens: 190241 },
-  { price: 0.0230, pct: 3.48, tokens: 203814 },
-  { price: 0.0240, pct: 3.71, tokens: 217460 },
-  { price: 0.0250, pct: 3.94, tokens: 231033 },
-  { price: 0.0260, pct: 4.18, tokens: 244606 },
-  { price: 0.0270, pct: 4.41, tokens: 258252 },
-  { price: 0.0280, pct: 4.64, tokens: 271825 },
-  { price: 0.0290, pct: 4.87, tokens: 285398 },
-  { price: 0.0300, pct: 5.10, tokens: 299044 },
-  { price: 0.0310, pct: 5.34, tokens: 312617 },
-  { price: 0.0320, pct: 5.57, tokens: 326190 },
-  { price: 0.0330, pct: 5.80, tokens: 339763 },
-  { price: 0.0340, pct: 6.03, tokens: 353409 },
-  { price: 0.0350, pct: 6.26, tokens: 366982 },
-  { price: 0.0360, pct: 6.50, tokens: 380555 },
-  { price: 0.0370, pct: 6.73, tokens: 394201 },
-  { price: 0.0380, pct: 6.96, tokens: 407774 },
-  { price: 0.0390, pct: 7.19, tokens: 421347 },
-  { price: 0.0400, pct: 7.42, tokens: 434993 },
-  { price: 0.0410, pct: 7.66, tokens: 448566 },
-  { price: 0.0420, pct: 7.89, tokens: 462139 },
-  { price: 0.0430, pct: 8.12, tokens: 475712 },
-  { price: 0.0440, pct: 8.35, tokens: 489358 },
-  { price: 0.0450, pct: 8.59, tokens: 502931 },
-  { price: 0.0460, pct: 8.82, tokens: 516504 },
-  { price: 0.0470, pct: 9.05, tokens: 530077 },
-  { price: 0.0480, pct: 9.28, tokens: 543723 },
-  { price: 0.0490, pct: 9.51, tokens: 557296 },
-  { price: 0.0500, pct: 9.74, tokens: 570869 },
+  {price:0.0100,pct:0.46,tokens:27146},{price:0.0110,pct:0.70,tokens:40719},
+  {price:0.0120,pct:0.93,tokens:54292},{price:0.0130,pct:1.16,tokens:67938},
+  {price:0.0140,pct:1.39,tokens:81511},{price:0.0150,pct:1.62,tokens:95084},
+  {price:0.0160,pct:1.86,tokens:108730},{price:0.0170,pct:2.09,tokens:122303},
+  {price:0.0180,pct:2.32,tokens:135876},{price:0.0190,pct:2.55,tokens:149449},
+  {price:0.0200,pct:2.78,tokens:163095},{price:0.0210,pct:3.02,tokens:176668},
+  {price:0.0220,pct:3.25,tokens:190241},{price:0.0230,pct:3.48,tokens:203814},
+  {price:0.0240,pct:3.71,tokens:217460},{price:0.0250,pct:3.94,tokens:231033},
+  {price:0.0260,pct:4.18,tokens:244606},{price:0.0270,pct:4.41,tokens:258252},
+  {price:0.0280,pct:4.64,tokens:271825},{price:0.0290,pct:4.87,tokens:285398},
+  {price:0.0300,pct:5.10,tokens:299044},{price:0.0310,pct:5.34,tokens:312617},
+  {price:0.0320,pct:5.57,tokens:326190},{price:0.0330,pct:5.80,tokens:339763},
+  {price:0.0340,pct:6.03,tokens:353409},{price:0.0350,pct:6.26,tokens:366982},
+  {price:0.0360,pct:6.50,tokens:380555},{price:0.0370,pct:6.73,tokens:394201},
+  {price:0.0380,pct:6.96,tokens:407774},{price:0.0390,pct:7.19,tokens:421347},
+  {price:0.0400,pct:7.42,tokens:434993},{price:0.0410,pct:7.66,tokens:448566},
+  {price:0.0420,pct:7.89,tokens:462139},{price:0.0430,pct:8.12,tokens:475712},
+  {price:0.0440,pct:8.35,tokens:489358},{price:0.0450,pct:8.59,tokens:502931},
+  {price:0.0460,pct:8.82,tokens:516504},{price:0.0470,pct:9.05,tokens:530077},
+  {price:0.0480,pct:9.28,tokens:543723},{price:0.0490,pct:9.51,tokens:557296},
+  {price:0.0500,pct:9.74,tokens:570869},
 ];
 
 const C = {
-  bg:"#080b0f", surface:"#0d1017", card:"#121720", card2:"#161c26",
-  border:"#1c2535", accent:"#00e5b0", accentDim:"#00e5b012",
-  gold:"#f0c040", red:"#ff4d6a", text:"#dde3ee", muted:"#4a5870", blue:"#4da6ff",
+  bg:"#080b0f",surface:"#0d1017",card:"#121720",card2:"#161c26",
+  border:"#1c2535",accent:"#00e5b0",accentDim:"#00e5b012",
+  gold:"#f0c040",red:"#ff4d6a",text:"#dde3ee",muted:"#4a5870",blue:"#4da6ff",purple:"#c084fc",
 };
-const HUES = ["#00e5b0","#f0c040","#4da6ff","#ff4d6a","#c084fc","#fb923c"];
+const HUES=["#00e5b0","#f0c040","#4da6ff","#ff4d6a","#c084fc","#fb923c"];
 
-const fmt = (n,dp=2) => isNaN(n)?"0.00":Math.abs(n).toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
-const fmtUSD = n => "$"+fmt(n);
-const fmtTok = n => fmt(n,0);
-const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const fmt=(n,dp=2)=>isNaN(n)?"0.00":Math.abs(n).toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp});
+const fmtUSD=n=>"$"+fmt(n);
+const fmtTok=n=>fmt(n,0);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 
-// ── Styles ──
-const inp = (ex={}) => ({background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"7px 10px",fontSize:12,fontFamily:"inherit",outline:"none",width:"100%",...ex});
-const card = (ex={}) => ({background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16,...ex});
+const S = {
+  inp:(ex={})=>({background:C.card2,border:`1px solid ${C.border}`,color:C.text,borderRadius:5,padding:"7px 10px",fontSize:12,fontFamily:"inherit",outline:"none",width:"100%",...ex}),
+  card:(ex={})=>({background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16,...ex}),
+};
 
-// ── Components ──
-const Bar = ({pct,color,h=5}) => (
+const Bar=({pct,color,h=5})=>(
   <div style={{height:h,background:"#1c2535",borderRadius:h,overflow:"hidden"}}>
     <div style={{height:"100%",width:`${Math.min(100,Math.max(0,pct||0))}%`,background:color,borderRadius:h,transition:"width .4s"}}/>
   </div>
 );
-
-const Tag = ({color,children}) => (
+const Tag=({color,children})=>(
   <span style={{background:color+"20",border:`1px solid ${color}50`,color,borderRadius:4,padding:"2px 7px",fontSize:10,letterSpacing:1,fontWeight:700}}>{children}</span>
 );
-
-const Btn = ({onClick,children,color,small,style={}}) => (
-  <button onClick={onClick} style={{background:(color||C.accent)+"18",border:`1px solid ${(color||C.accent)}55`,color:color||C.accent,borderRadius:5,padding:small?"4px 10px":"7px 16px",cursor:"pointer",fontSize:small?10:11,fontFamily:"inherit",letterSpacing:1,fontWeight:700,...style}}>{children}</button>
+const Btn=({onClick,children,color,small,style:sx={}})=>(
+  <button onClick={onClick} style={{background:(color||C.accent)+"18",border:`1px solid ${(color||C.accent)}55`,color:color||C.accent,borderRadius:5,padding:small?"4px 10px":"7px 16px",cursor:"pointer",fontSize:small?10:11,fontFamily:"inherit",letterSpacing:1,fontWeight:700,...sx}}>{children}</button>
 );
+const Label=({children})=><div style={{fontSize:9,color:C.muted,letterSpacing:1.5,marginBottom:4,textTransform:"uppercase"}}>{children}</div>;
 
-// ── Google Drive API ──
+// ── Google Drive ──
 class DriveAPI {
-  constructor(token) { this.token = token; }
-  headers() { return { "Authorization": `Bearer ${this.token}`, "Content-Type": "application/json" }; }
-
-  async findFile(name) {
-    const q = encodeURIComponent(`name='${name}' and trashed=false`);
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, { headers: this.headers() });
-    const d = await r.json();
-    return d.files?.[0]?.id || null;
+  constructor(t){this.t=t;}
+  h(){return{"Authorization":`Bearer ${this.t}`,"Content-Type":"application/json"};}
+  async findFile(name){
+    const q=encodeURIComponent(`name='${name}' and trashed=false`);
+    const r=await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`,{headers:this.h()});
+    const d=await r.json(); return d.files?.[0]?.id||null;
   }
-
-  async readFile(fileId) {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: this.headers() });
+  async readFile(id){
+    const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:this.h()});
     return r.json();
   }
-
-  async writeFile(fileId, data) {
-    const body = JSON.stringify(data, null, 2);
-    if (fileId) {
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-        method: "PATCH", headers: { "Authorization": `Bearer ${this.token}`, "Content-Type": "application/json" }, body
-      });
-    } else {
-      const meta = await fetch("https://www.googleapis.com/drive/v3/files", {
-        method: "POST", headers: this.headers(), body: JSON.stringify({ name: DRIVE_FILENAME, mimeType: "application/json" })
-      });
-      const { id } = await meta.json();
-      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
-        method: "PATCH", headers: { "Authorization": `Bearer ${this.token}`, "Content-Type": "application/json" }, body
-      });
+  async writeFile(id,data){
+    const body=JSON.stringify(data,null,2);
+    if(id){
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`,{method:"PATCH",headers:{"Authorization":`Bearer ${this.t}`,"Content-Type":"application/json"},body});
       return id;
     }
-    return fileId;
+    const m=await(await fetch("https://www.googleapis.com/drive/v3/files",{method:"POST",headers:this.h(),body:JSON.stringify({name:DRIVE_FILENAME,mimeType:"application/json"})})).json();
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${m.id}?uploadType=media`,{method:"PATCH",headers:{"Authorization":`Bearer ${this.t}`,"Content-Type":"application/json"},body});
+    return m.id;
   }
 }
 
-async function fetchFLRPrice() {
-  try {
-    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=flare-networks&vs_currencies=usd");
-    const d = await r.json();
-    return d?.["flare-networks"]?.usd || null;
-  } catch { return null; }
+async function fetchFLRPrice(){
+  try{const r=await fetch("https://api.coingecko.com/api/v3/simple/price?ids=flare-networks&vs_currencies=usd");const d=await r.json();return d?.["flare-networks"]?.usd||null;}catch{return null;}
 }
 
-// ── Main App ──
-function App() {
-  const [authToken, setAuthToken] = useState(null);
-  const [clientId, setClientId] = useState(GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID_HERE" ? GOOGLE_CLIENT_ID : localStorage.getItem("flr_gclient") || "");
-  const [clientIdInput, setClientIdInput] = useState("");
-  const [showSetup, setShowSetup] = useState(false);
+// ─────────────────────────────────────────────────────────
+// CALCULATIONS
+// ─────────────────────────────────────────────────────────
+// Trade types:
+//   "sell"  → tokens leave wallet, proceeds count toward RAISED
+//   "buy"   → tokens enter wallet, cost is ADDED TO TARGET (money to recover)
+//             AND reduces net qty at that level (like a buyback)
+//
+// cashItems (separate from cashDeployed):
+//   type "deployed" → cash already spent toward debt, counts toward RAISED
+//   type "addition" → extra cash spent (e.g. bought more FLR with cash, any expense),
+//                     added to TARGET (needs recovering)
+//
+// Debt balances → sum = base target
+// TARGET = debtTotal + buySpend + cashAdditions
+// RAISED = netSellProceeds + cashDeployed
 
-  const [levels, setLevels] = useState(() => INITIAL_SELLS.map(l => ({...l, trades:[]})));
-  const [debts, setDebts] = useState([]);
-  const [cashDeployed, setCashDeployed] = useState([]);
-  const [currentPrice, setCurrentPrice] = useState(0.0068);
-  const [priceChange, setPriceChange] = useState(null);
-  const [lastPriceFetch, setLastPriceFetch] = useState(null);
-  const [tab, setTab] = useState("dashboard");
-  const [logLevel, setLogLevel] = useState(null);
-  const [newTrade, setNewTrade] = useState({type:"sell",qty:"",price:"",note:""});
-  const [showAddDebt, setShowAddDebt] = useState(false);
-  const [newDebt, setNewDebt] = useState({name:"",balance:"",notes:""});
-  const [expandedDebt, setExpandedDebt] = useState(null);
-  const [showAddCash, setShowAddCash] = useState(false);
-  const [newCash, setNewCash] = useState({label:"",amount:"",note:""});
-  const [driveStatus, setDriveStatus] = useState("idle");
-  const [driveMsg, setDriveMsg] = useState("Not connected");
-  const [fileId, setFileId] = useState(null);
-  const [loaded, setLoaded] = useState(false);
-  const saveTimer = useRef(null);
-  const prevPrice = useRef(null);
-  const driveRef = useRef(null);
+function calcLevelStats(l){
+  const sells=l.trades.filter(t=>t.type==="sell");
+  const buys =l.trades.filter(t=>t.type==="buy");
+  return {
+    netQty:   sells.reduce((a,t)=>a+t.qty,0) - buys.reduce((a,t)=>a+t.qty,0),
+    sellProceeds: sells.reduce((a,t)=>a+t.qty*t.price,0),
+    buyCost:  buys.reduce((a,t)=>a+t.qty*t.price,0),
+    soldQty:  sells.reduce((a,t)=>a+t.qty,0),
+    boughtQty:buys.reduce((a,t)=>a+t.qty,0),
+  };
+}
 
-  // ── Google OAuth (implicit flow — works from file://) ──
-  function signInGoogle() {
-    const cid = clientId || clientIdInput;
-    if (!cid) { setShowSetup(true); return; }
-    const params = new URLSearchParams({
-      client_id: cid,
-      redirect_uri: window.location.href.split("?")[0].split("#")[0],
-      response_type: "token",
-      scope: DRIVE_SCOPE,
-      prompt: "consent",
-    });
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-  }
+// ─────────────────────────────────────────────────────────
+function App(){
+  const [authToken,setAuthToken]=useState(null);
+  const storedCid=localStorage.getItem("flr_gclient")||"";
+  const [clientId,setClientId]=useState(GOOGLE_CLIENT_ID!=="YOUR_GOOGLE_CLIENT_ID_HERE"?GOOGLE_CLIENT_ID:storedCid);
+  const [clientIdInput,setClientIdInput]=useState("");
+  const [showSetup,setShowSetup]=useState(false);
 
-  // ── Handle OAuth redirect token in URL hash ──
-  useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.includes("access_token")) {
-      const params = new URLSearchParams(hash.slice(1));
-      const token = params.get("access_token");
-      if (token) {
-        setAuthToken(token);
-        driveRef.current = new DriveAPI(token);
-        window.history.replaceState(null, "", window.location.pathname);
-      }
+  const [levels,setLevels]=useState(()=>INITIAL_SELLS.map(l=>({...l,trades:[]})));
+  const [debts,setDebts]=useState([]);
+  // cashItems: { id, type: "deployed"|"addition", label, amount, note, date }
+  const [cashItems,setCashItems]=useState([]);
+  const [currentPrice,setCurrentPrice]=useState(0.0068);
+  const [priceChange,setPriceChange]=useState(null);
+  const [lastFetch,setLastFetch]=useState(null);
+  const [tab,setTab]=useState("dashboard");
+  const [logLevel,setLogLevel]=useState(null);
+  const [newTrade,setNewTrade]=useState({type:"sell",qty:"",price:"",note:""});
+  const [showAddDebt,setShowAddDebt]=useState(false);
+  const [newDebt,setNewDebt]=useState({name:"",balance:"",notes:""});
+  const [expandedDebt,setExpandedDebt]=useState(null);
+  const [showAddCash,setShowAddCash]=useState(false);
+  const [newCash,setNewCash]=useState({type:"deployed",label:"",amount:"",note:""});
+  const [driveStatus,setDriveStatus]=useState("idle");
+  const [driveMsg,setDriveMsg]=useState("Not connected");
+  const [fileId,setFileId]=useState(null);
+  const [loaded,setLoaded]=useState(false);
+  const saveTimer=useRef(null);
+  const prevPrice=useRef(null);
+  const driveRef=useRef(null);
+
+  // OAuth redirect handler
+  useEffect(()=>{
+    const hash=window.location.hash;
+    if(hash.includes("access_token")){
+      const p=new URLSearchParams(hash.slice(1));
+      const t=p.get("access_token");
+      if(t){setAuthToken(t);driveRef.current=new DriveAPI(t);window.history.replaceState(null,"",window.location.pathname);}
     }
-  }, []);
+  },[]);
 
-  // ── Load from Drive once token is set ──
-  useEffect(() => {
-    if (!authToken) return;
-    async function loadData() {
-      setDriveStatus("loading"); setDriveMsg("Loading from Drive…");
-      try {
-        const api = driveRef.current;
-        const fid = await api.findFile(DRIVE_FILENAME);
+  // Load from Drive
+  useEffect(()=>{
+    if(!authToken)return;
+    async function load(){
+      setDriveStatus("loading");setDriveMsg("Loading from Drive…");
+      try{
+        const api=driveRef.current;
+        const fid=await api.findFile(DRIVE_FILENAME);
         setFileId(fid);
-        if (fid) {
-          const data = await api.readFile(fid);
-          if (data.levels) setLevels(data.levels.map(l => ({...l, trades: l.trades||[]})));
-          if (data.debts) setDebts(data.debts);
-          if (data.cashDeployed) setCashDeployed(data.cashDeployed);
-          if (data.currentPrice) setCurrentPrice(data.currentPrice);
-          setDriveMsg("Loaded ✓"); setDriveStatus("saved");
-        } else {
-          setDriveMsg("New file — will create on save"); setDriveStatus("idle");
-        }
-      } catch(e) {
-        setDriveMsg("Load failed"); setDriveStatus("error");
-      }
+        if(fid){
+          const d=await api.readFile(fid);
+          if(d.levels)setLevels(d.levels.map(l=>({...l,trades:l.trades||[]})));
+          if(d.debts)setDebts(d.debts);
+          if(d.cashItems)setCashItems(d.cashItems);
+          // migrate old cashDeployed if present
+          else if(d.cashDeployed)setCashItems(d.cashDeployed.map(c=>({...c,type:"deployed"})));
+          if(d.currentPrice)setCurrentPrice(d.currentPrice);
+          setDriveMsg("Loaded ✓");setDriveStatus("saved");
+        }else{setDriveMsg("New — saves on next change");setDriveStatus("idle");}
+      }catch{setDriveMsg("Load failed");setDriveStatus("error");}
       setLoaded(true);
-      // fetch live price after load
-      const p = await fetchFLRPrice();
-      if (p) { prevPrice.current = p; setCurrentPrice(p); setLastPriceFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})); }
+      const p=await fetchFLRPrice();
+      if(p){prevPrice.current=p;setCurrentPrice(p);setLastFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));}
     }
-    loadData();
-  }, [authToken]);
+    load();
+  },[authToken]);
 
-  // ── Also load locally if no auth yet (fallback) ──
-  useEffect(() => {
-    if (authToken) return;
-    try {
-      const raw = localStorage.getItem("flr_data");
-      if (raw) {
-        const d = JSON.parse(raw);
-        if (d.levels) setLevels(d.levels.map(l=>({...l,trades:l.trades||[]})));
-        if (d.debts) setDebts(d.debts);
-        if (d.cashDeployed) setCashDeployed(d.cashDeployed);
-        if (d.currentPrice) setCurrentPrice(d.currentPrice);
+  // Local fallback load
+  useEffect(()=>{
+    if(authToken)return;
+    try{
+      const raw=localStorage.getItem("flr_data");
+      if(raw){
+        const d=JSON.parse(raw);
+        if(d.levels)setLevels(d.levels.map(l=>({...l,trades:l.trades||[]})));
+        if(d.debts)setDebts(d.debts);
+        if(d.cashItems)setCashItems(d.cashItems);
+        else if(d.cashDeployed)setCashItems(d.cashDeployed.map(c=>({...c,type:"deployed"})));
+        if(d.currentPrice)setCurrentPrice(d.currentPrice);
       }
-    } catch {}
+    }catch{}
     setLoaded(true);
-    fetchFLRPrice().then(p => { if (p) { prevPrice.current=p; setCurrentPrice(p); setLastPriceFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})); }});
-  }, []);
+    fetchFLRPrice().then(p=>{if(p){prevPrice.current=p;setCurrentPrice(p);setLastFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));}});
+  },[]);
 
-  // ── Auto-save ──
-  useEffect(() => {
-    if (!loaded) return;
-    const data = { levels, debts, cashDeployed, currentPrice };
-    // always save locally as fallback
-    localStorage.setItem("flr_data", JSON.stringify(data));
-    if (!authToken) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    setDriveStatus("saving"); setDriveMsg("Saving…");
-    saveTimer.current = setTimeout(async () => {
-      try {
-        const newId = await driveRef.current.writeFile(fileId, data);
-        if (newId && newId !== fileId) setFileId(newId);
-        setDriveStatus("saved"); setDriveMsg("Saved to Drive ✓");
-      } catch { setDriveStatus("error"); setDriveMsg("Save failed"); }
-    }, 3000);
-  }, [levels, debts, cashDeployed, currentPrice, loaded]);
+  // Auto-save
+  useEffect(()=>{
+    if(!loaded)return;
+    const data={levels,debts,cashItems,currentPrice};
+    localStorage.setItem("flr_data",JSON.stringify(data));
+    if(!authToken)return;
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    setDriveStatus("saving");setDriveMsg("Saving…");
+    saveTimer.current=setTimeout(async()=>{
+      try{
+        const nid=await driveRef.current.writeFile(fileId,data);
+        if(nid&&nid!==fileId)setFileId(nid);
+        setDriveStatus("saved");setDriveMsg("Saved to Drive ✓");
+      }catch{setDriveStatus("error");setDriveMsg("Save failed");}
+    },3000);
+  },[levels,debts,cashItems,currentPrice,loaded]);
 
-  // ── Price refresh every 60s ──
-  useEffect(() => {
-    const iv = setInterval(async () => {
-      const p = await fetchFLRPrice();
-      if (p) {
-        setPriceChange(prevPrice.current ? ((p-prevPrice.current)/prevPrice.current)*100 : null);
-        prevPrice.current = p; setCurrentPrice(p);
-        setLastPriceFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));
-      }
-    }, 60000);
-    return () => clearInterval(iv);
-  }, []);
+  // Price refresh
+  useEffect(()=>{
+    const iv=setInterval(async()=>{
+      const p=await fetchFLRPrice();
+      if(p){setPriceChange(prevPrice.current?((p-prevPrice.current)/prevPrice.current)*100:null);prevPrice.current=p;setCurrentPrice(p);setLastFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));}
+    },60000);
+    return()=>clearInterval(iv);
+  },[]);
 
-  async function refreshPrice() {
-    const p = await fetchFLRPrice();
-    if (p) { setPriceChange(prevPrice.current?((p-prevPrice.current)/prevPrice.current)*100:null); prevPrice.current=p; setCurrentPrice(p); setLastPriceFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})); }
+  async function refreshPrice(){
+    const p=await fetchFLRPrice();
+    if(p){setPriceChange(prevPrice.current?((p-prevPrice.current)/prevPrice.current)*100:null);prevPrice.current=p;setCurrentPrice(p);setLastFetch(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));}
   }
 
-  // ── Derived ──
-  const TOTAL_TOKENS = 5857761;
-  function levelStats(l) {
-    const sells=l.trades.filter(t=>t.type==="sell"), buys=l.trades.filter(t=>t.type==="buy");
-    return {
-      netQty: sells.reduce((a,t)=>a+t.qty,0)-buys.reduce((a,t)=>a+t.qty,0),
-      netValue: sells.reduce((a,t)=>a+t.qty*t.price,0)-buys.reduce((a,t)=>a+t.qty*t.price,0),
-      totalSoldQty: sells.reduce((a,t)=>a+t.qty,0),
-      totalBoughtQty: buys.reduce((a,t)=>a+t.qty,0),
-    };
+  function signIn(){
+    const cid=clientId||clientIdInput;
+    if(!cid){setShowSetup(true);return;}
+    const params=new URLSearchParams({client_id:cid,redirect_uri:window.location.href.split("?")[0].split("#")[0],response_type:"token",scope:DRIVE_SCOPE,prompt:"consent"});
+    window.location.href=`https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   }
-  const lws = levels.map(l=>({...l,...levelStats(l)}));
-  const totalNetValue = lws.reduce((a,l)=>a+l.netValue,0);
-  const totalNetQty   = lws.reduce((a,l)=>a+l.netQty,0);
-  const totalSoldQty  = lws.reduce((a,l)=>a+l.totalSoldQty,0);
-  const totalBoughtBack = lws.reduce((a,l)=>a+l.totalBoughtQty,0);
-  const tokensHeld    = TOTAL_TOKENS - totalSoldQty + totalBoughtBack;
-  const totalCash     = cashDeployed.reduce((a,c)=>a+(parseFloat(c.amount)||0),0);
-  const totalRaised   = totalNetValue + totalCash;
-  const target        = debts.reduce((a,d)=>a+(parseFloat(d.balance)||0),0);
-  const remaining     = Math.max(0,target-totalRaised);
-  const progress      = target>0?Math.min(100,(totalRaised/target)*100):0;
+
+  // ── Derived calculations ──
+  const TOTAL_TOKENS=5857761;
+  const lws=levels.map(l=>({...l,...calcLevelStats(l)}));
+
+  const totalSellProceeds = lws.reduce((a,l)=>a+l.sellProceeds,0);
+  const totalBuyCost      = lws.reduce((a,l)=>a+l.buyCost,0);
+  const totalSoldQty      = lws.reduce((a,l)=>a+l.soldQty,0);
+  const totalBoughtQty    = lws.reduce((a,l)=>a+l.boughtQty,0);
+  const tokensHeld        = TOTAL_TOKENS - totalSoldQty + totalBoughtQty;
+
+  const cashDeployedTotal   = cashItems.filter(c=>c.type==="deployed").reduce((a,c)=>a+(parseFloat(c.amount)||0),0);
+  const cashAdditionsTotal  = cashItems.filter(c=>c.type==="addition").reduce((a,c)=>a+(parseFloat(c.amount)||0),0);
+  const debtTotal           = debts.reduce((a,d)=>a+(parseFloat(d.balance)||0),0);
+
+  // TARGET = debts + FLR buy costs + cash additions (all money that needs recovering)
+  const target = debtTotal + totalBuyCost + cashAdditionsTotal;
+  // RAISED = sell proceeds + cash deployed
+  const totalRaised = totalSellProceeds + cashDeployedTotal;
+
+  const remaining = Math.max(0,target-totalRaised);
+  const progress  = target>0?Math.min(100,(totalRaised/target)*100):0;
+
   let cum=0;
-  const ld = lws.map(l=>{ cum+=l.netValue; return {...l,cumVal:cum}; });
+  const ld=lws.map(l=>{cum+=l.sellProceeds-l.buyCost;return{...l,cumVal:cum};});
 
   // ── Mutations ──
-  function addTrade(li) {
-    const q=parseFloat(newTrade.qty), p=parseFloat(newTrade.price)||levels[li].price;
-    if (!q||q<=0) return;
+  function addTrade(li){
+    const q=parseFloat(newTrade.qty),p=parseFloat(newTrade.price)||levels[li].price;
+    if(!q||q<=0)return;
     const t={id:uid(),type:newTrade.type,qty:q,price:p,date:new Date().toISOString().slice(0,10),note:newTrade.note};
-    setLevels(prev=>{const n=[...prev]; n[li]={...n[li],trades:[...n[li].trades,t]}; return n;});
+    setLevels(prev=>{const n=[...prev];n[li]={...n[li],trades:[...n[li].trades,t]};return n;});
     setNewTrade(t=>({...t,qty:"",note:""}));
   }
-  function removeTrade(li,tid) {
-    setLevels(prev=>{const n=[...prev]; n[li]={...n[li],trades:n[li].trades.filter(t=>t.id!==tid)}; return n;});
+  function removeTrade(li,tid){
+    setLevels(prev=>{const n=[...prev];n[li]={...n[li],trades:n[li].trades.filter(t=>t.id!==tid)};return n;});
   }
-  function addDebt() {
-    if (!newDebt.name||!newDebt.balance) return;
+  function addDebt(){
+    if(!newDebt.name||!newDebt.balance)return;
     setDebts(d=>[...d,{id:uid(),name:newDebt.name,balance:parseFloat(newDebt.balance),notes:newDebt.notes}]);
-    setNewDebt({name:"",balance:"",notes:""}); setShowAddDebt(false);
+    setNewDebt({name:"",balance:"",notes:""});setShowAddDebt(false);
   }
-  function updateDebt(id,field,val) {
+  function updateDebt(id,field,val){
     setDebts(d=>d.map(x=>x.id===id?{...x,[field]:field==="balance"?parseFloat(val)||0:val}:x));
   }
-  function addCash() {
-    if (!newCash.label||!newCash.amount) return;
-    setCashDeployed(c=>[...c,{id:uid(),label:newCash.label,amount:parseFloat(newCash.amount),note:newCash.note,date:new Date().toISOString().slice(0,10)}]);
-    setNewCash({label:"",amount:"",note:""}); setShowAddCash(false);
+  function addCash(){
+    if(!newCash.label||!newCash.amount)return;
+    setCashItems(c=>[...c,{id:uid(),type:newCash.type,label:newCash.label,amount:parseFloat(newCash.amount),note:newCash.note,date:new Date().toISOString().slice(0,10)}]);
+    setNewCash({type:"deployed",label:"",amount:"",note:""});setShowAddCash(false);
   }
 
-  const driveColor = {idle:C.muted,loading:C.blue,saving:C.gold,saved:C.accent,error:C.red}[driveStatus];
+  const driveColor={idle:C.muted,loading:C.blue,saving:C.gold,saved:C.accent,error:C.red}[driveStatus];
 
-  const TabBtn = ({id,label}) => (
+  const TabBtn=({id,label})=>(
     <button onClick={()=>setTab(id)} style={{padding:"7px 14px",borderRadius:5,cursor:"pointer",fontSize:11,letterSpacing:1.5,fontWeight:600,textTransform:"uppercase",background:tab===id?C.accentDim:"transparent",color:tab===id?C.accent:C.muted,border:`1px solid ${tab===id?C.accent+"55":"transparent"}`,fontFamily:"inherit",transition:"all .15s"}}>{label}</button>
   );
 
   // ── Setup screen ──
-  if (showSetup || (GOOGLE_CLIENT_ID === "YOUR_GOOGLE_CLIENT_ID_HERE" && !clientId && !authToken)) {
-    return (
+  if(showSetup||(GOOGLE_CLIENT_ID==="YOUR_GOOGLE_CLIENT_ID_HERE"&&!clientId&&!authToken)){
+    return(
       <div className="setup-overlay">
         <div className="setup-box">
-          <div style={{fontSize:24,color:C.accent,fontWeight:700,letterSpacing:3,marginBottom:6}}>⬡ FLR TRACKER</div>
-          <div style={{fontSize:11,color:C.muted,letterSpacing:2,marginBottom:24}}>SETUP — ONE TIME ONLY</div>
-          <div style={{fontSize:12,color:C.text,lineHeight:1.8,marginBottom:20}}>
-            To sync across devices, you need a free Google OAuth Client ID.<br/><br/>
-            <span style={{color:C.gold}}>1.</span> Go to <a href="https://console.cloud.google.com" target="_blank" style={{color:C.accent}}>console.cloud.google.com</a><br/>
-            <span style={{color:C.gold}}>2.</span> New project → APIs &amp; Services → Enable <b>Google Drive API</b><br/>
-            <span style={{color:C.gold}}>3.</span> Credentials → Create → OAuth 2.0 → Web application<br/>
-            <span style={{color:C.gold}}>4.</span> Authorised JS origins: add <code style={{color:C.gold,fontSize:11}}>file://</code> and your iCloud file path<br/>
-            <span style={{color:C.gold}}>5.</span> Paste Client ID below
+          <div style={{fontSize:22,color:C.accent,fontWeight:700,letterSpacing:3,marginBottom:4}}>⬡ FLR TRACKER</div>
+          <div style={{fontSize:10,color:C.muted,letterSpacing:3,marginBottom:24}}>GOOGLE DRIVE SETUP</div>
+          <div style={{fontSize:12,color:C.text,lineHeight:2,marginBottom:20}}>
+            <span style={{color:C.gold}}>1.</span> <a href="https://console.cloud.google.com" target="_blank" style={{color:C.accent}}>console.cloud.google.com</a> → new project<br/>
+            <span style={{color:C.gold}}>2.</span> APIs &amp; Services → Enable <b>Google Drive API</b><br/>
+            <span style={{color:C.gold}}>3.</span> Credentials → OAuth 2.0 Client ID → Web application<br/>
+            <span style={{color:C.gold}}>4.</span> JS origins: <code style={{color:C.gold}}>https://williamslater.github.io</code><br/>
+            <span style={{color:C.gold}}>5.</span> Redirect URIs: <code style={{color:C.gold}}>https://williamslater.github.io/flare-tracker/</code>
           </div>
           <div style={{marginBottom:12}}>
-            <div style={{fontSize:10,color:C.muted,marginBottom:6,letterSpacing:1}}>GOOGLE CLIENT ID</div>
-            <input style={inp()} placeholder="xxxxxxxx.apps.googleusercontent.com" value={clientIdInput} onChange={e=>setClientIdInput(e.target.value)} />
+            <Label>Google Client ID</Label>
+            <input style={S.inp()} placeholder="xxxxxxxx.apps.googleusercontent.com" value={clientIdInput} onChange={e=>setClientIdInput(e.target.value)}/>
           </div>
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <Btn onClick={()=>{ if(clientIdInput){localStorage.setItem("flr_gclient",clientIdInput); setClientId(clientIdInput); setShowSetup(false); } }}>SAVE CLIENT ID</Btn>
-            <Btn onClick={()=>setShowSetup(false)} color={C.muted}>USE WITHOUT DRIVE</Btn>
+            <Btn onClick={()=>{if(clientIdInput){localStorage.setItem("flr_gclient",clientIdInput);setClientId(clientIdInput);setShowSetup(false);}}}>SAVE & CLOSE</Btn>
+            <Btn onClick={()=>setShowSetup(false)} color={C.muted}>USE LOCAL ONLY</Btn>
           </div>
-          <div style={{fontSize:10,color:C.muted,marginTop:16}}>Without Drive, data saves to browser/app local storage only.</div>
         </div>
       </div>
     );
   }
 
-  // ── Log modal ──
-  const LogModal = () => {
-    if (logLevel===null) return null;
+  // ── Level log modal ──
+  const LogModal=()=>{
+    if(logLevel===null)return null;
     const l=ld[logLevel];
+    const netVal=l.sellProceeds-l.buyCost;
     const pct=l.tokens>0?Math.min(100,(l.netQty/l.tokens)*100):0;
-    return (
+    return(
       <div className="modal-bg" onClick={e=>{if(e.target===e.currentTarget)setLogLevel(null);}}>
         <div className="modal">
           <div style={{padding:"16px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
               <span style={{fontSize:18,fontWeight:700,color:C.gold}}>${l.price.toFixed(4)}</span>
-              <span style={{fontSize:11,color:C.muted,marginLeft:8}}>· {fmtTok(l.tokens)} target tokens</span>
+              <span style={{fontSize:11,color:C.muted,marginLeft:8}}>· {fmtTok(l.tokens)} plan tokens</span>
             </div>
-            <Btn onClick={()=>setLogLevel(null)} color={C.muted} small>✕ CLOSE</Btn>
+            <Btn onClick={()=>setLogLevel(null)} color={C.muted} small>✕</Btn>
           </div>
 
-          <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-            {[{label:"NET SOLD",val:fmtTok(l.netQty),color:l.netQty>=l.tokens?C.accent:C.gold},{label:"NET VALUE",val:fmtUSD(l.netValue),color:C.accent},{label:"BUYBACKS",val:fmtTok(l.totalBoughtQty||0),color:l.totalBoughtQty>0?C.blue:C.muted}]
-              .map(({label,val,color})=>(
+          {/* Stats */}
+          <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+            {[
+              {label:"NET QTY",val:fmtTok(l.netQty),color:l.netQty>=l.tokens?C.accent:C.gold},
+              {label:"SELL PROCEEDS",val:fmtUSD(l.sellProceeds),color:C.accent},
+              {label:"BUY COST",val:fmtUSD(l.buyCost),color:l.buyCost>0?C.red:C.muted},
+              {label:"NET VALUE",val:fmtUSD(netVal),color:netVal>=0?C.accent:C.red},
+            ].map(({label,val,color})=>(
               <div key={label}>
-                <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:4}}>{label}</div>
-                <div style={{fontSize:18,fontWeight:700,color}}>{val}</div>
+                <div style={{fontSize:9,color:C.muted,letterSpacing:1.5,marginBottom:4}}>{label}</div>
+                <div style={{fontSize:15,fontWeight:700,color}}>{val}</div>
               </div>
             ))}
           </div>
-          <div style={{padding:"8px 20px 14px",borderBottom:`1px solid ${C.border}`}}>
+          <div style={{padding:"8px 20px 12px",borderBottom:`1px solid ${C.border}`}}>
             <Bar pct={pct} color={l.netQty>=l.tokens?C.accent:C.gold}/>
-            <div style={{fontSize:10,color:C.muted,marginTop:4}}>{fmt(pct,0)}% filled (net)</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:4}}>{fmt(pct,0)}% of level filled (net qty)</div>
           </div>
 
+          {/* Log trade */}
           <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`}}>
-            <div style={{fontSize:10,color:C.accent,letterSpacing:2,marginBottom:10}}>LOG TRADE</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:8}}>
-              <div>
-                <div style={{fontSize:9,color:C.muted,marginBottom:4}}>TYPE</div>
-                <select style={inp()} value={newTrade.type} onChange={e=>setNewTrade(t=>({...t,type:e.target.value}))}>
-                  <option value="sell">SELL</option>
-                  <option value="buy">BUY BACK</option>
-                </select>
-              </div>
-              <div>
-                <div style={{fontSize:9,color:C.muted,marginBottom:4}}>QUANTITY</div>
-                <input style={inp()} type="number" placeholder="tokens" value={newTrade.qty} onChange={e=>setNewTrade(t=>({...t,qty:e.target.value}))}/>
-              </div>
-              <div>
-                <div style={{fontSize:9,color:C.muted,marginBottom:4}}>PRICE ($)</div>
-                <input style={inp({color:C.gold})} type="number" step="0.0001" value={newTrade.price||l.price} onChange={e=>setNewTrade(t=>({...t,price:e.target.value}))}/>
-              </div>
+            <div style={{fontSize:10,color:C.accent,letterSpacing:2,marginBottom:12}}>LOG TRADE</div>
+
+            {/* Type selector */}
+            <div style={{display:"flex",gap:8,marginBottom:12}}>
+              {["sell","buy"].map(type=>(
+                <button key={type} onClick={()=>setNewTrade(t=>({...t,type}))} style={{flex:1,padding:"8px",borderRadius:6,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:11,letterSpacing:1,border:`2px solid ${newTrade.type===type?(type==="sell"?C.accent:C.red):C.border}`,background:newTrade.type===type?(type==="sell"?C.accentDim:C.red+"15"):"transparent",color:newTrade.type===type?(type==="sell"?C.accent:C.red):C.muted,transition:"all .15s"}}>
+                  {type==="sell"?"▲ SELL":"▼ BUY"}
+                </button>
+              ))}
             </div>
-            <div style={{marginBottom:10}}>
-              <div style={{fontSize:9,color:C.muted,marginBottom:4}}>NOTE</div>
-              <input style={inp()} placeholder="e.g. 20% pullback buyback..." value={newTrade.note} onChange={e=>setNewTrade(t=>({...t,note:e.target.value}))}/>
+
+            {newTrade.type==="buy"&&(
+              <div style={{background:C.red+"10",border:`1px solid ${C.red}30`,borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:11,color:C.red}}>
+                Buy cost will be added to your target (money to recover)
+              </div>
+            )}
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div><Label>Quantity (tokens)</Label><input style={S.inp()} type="number" placeholder="0" value={newTrade.qty} onChange={e=>setNewTrade(t=>({...t,qty:e.target.value}))}/></div>
+              <div><Label>Actual Price ($) — guide level: {l.price.toFixed(4)}</Label><input style={S.inp({color:C.gold})} type="number" step="0.0001" value={newTrade.price||l.price} onChange={e=>setNewTrade(t=>({...t,price:e.target.value}))}/></div>
             </div>
-            <Btn onClick={()=>addTrade(logLevel)}>+ LOG TRADE</Btn>
+            <div style={{marginBottom:12}}><Label>Note (optional)</Label><input style={S.inp()} placeholder="e.g. 20% pullback buy..." value={newTrade.note} onChange={e=>setNewTrade(t=>({...t,note:e.target.value}))}/></div>
+
+            {newTrade.qty&&newTrade.price&&(
+              <div style={{marginBottom:12,padding:"8px 12px",background:C.card2,borderRadius:6,fontSize:11,display:"flex",justifyContent:"space-between"}}>
+                <span style={{color:C.muted}}>Total {newTrade.type==="sell"?"proceeds":"cost"}</span>
+                <span style={{color:newTrade.type==="sell"?C.accent:C.red,fontWeight:700}}>{newTrade.type==="sell"?"+":"-"}{fmtUSD(parseFloat(newTrade.qty||0)*parseFloat(newTrade.price||0))}</span>
+              </div>
+            )}
+            <Btn onClick={()=>addTrade(logLevel)} color={newTrade.type==="sell"?C.accent:C.red}>+ LOG {newTrade.type.toUpperCase()}</Btn>
           </div>
 
+          {/* History */}
           <div style={{padding:"14px 20px"}}>
-            <div style={{fontSize:10,color:C.muted,letterSpacing:2,marginBottom:10}}>HISTORY</div>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:2,marginBottom:10}}>TRADE HISTORY</div>
             {l.trades.length===0&&<div style={{color:C.muted,fontSize:11,fontStyle:"italic"}}>No trades yet</div>}
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {[...l.trades].reverse().map(t=>(
                 <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",background:C.card,borderRadius:6,border:`1px solid ${C.border}`,flexWrap:"wrap"}}>
-                  <Tag color={t.type==="sell"?C.accent:C.blue}>{t.type==="sell"?"SELL":"BUY"}</Tag>
+                  <Tag color={t.type==="sell"?C.accent:C.red}>{t.type==="sell"?"SELL":"BUY"}</Tag>
                   <span style={{fontWeight:600}}>{fmtTok(t.qty)}</span>
                   <span style={{color:C.muted}}>@</span>
                   <span style={{color:C.gold}}>${t.price.toFixed(4)}</span>
-                  <span style={{color:t.type==="sell"?C.accent:C.red,marginLeft:"auto",fontWeight:700}}>{t.type==="sell"?"+":"-"}{fmtUSD(t.qty*t.price)}</span>
+                  <span style={{marginLeft:"auto",fontWeight:700,color:t.type==="sell"?C.accent:C.red}}>{t.type==="sell"?"+":"-"}{fmtUSD(t.qty*t.price)}</span>
                   <span style={{fontSize:10,color:C.muted}}>{t.date}</span>
                   {t.note&&<span style={{fontSize:10,color:C.muted,fontStyle:"italic"}}>— {t.note}</span>}
-                  <button onClick={()=>removeTrade(logLevel,t.id)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:14}}>✕</button>
+                  <button onClick={()=>removeTrade(logLevel,t.id)} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:14,lineHeight:1}}>✕</button>
                 </div>
               ))}
             </div>
@@ -483,7 +451,8 @@ function App() {
     );
   };
 
-  return (
+  // ── Render ──
+  return(
     <div style={{minHeight:"100vh",background:C.bg}}>
       <LogModal/>
 
@@ -494,9 +463,8 @@ function App() {
           <div style={{fontSize:9,color:C.muted,letterSpacing:4}}>DEBT PAYOFF PLAN</div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-          {/* Price */}
           <div>
-            <div style={{fontSize:9,color:C.muted,marginBottom:2}}>FLR/USD {lastPriceFetch&&<span>· {lastPriceFetch}</span>}</div>
+            <div style={{fontSize:9,color:C.muted,marginBottom:2}}>FLR / USD{lastFetch?` · ${lastFetch}`:""}</div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:20,fontWeight:700,color:C.gold}}>${currentPrice.toFixed(6)}</span>
               {priceChange!==null&&<span style={{fontSize:11,color:priceChange>=0?C.accent:C.red}}>{priceChange>=0?"▲":"▼"}{Math.abs(priceChange).toFixed(2)}%</span>}
@@ -508,20 +476,19 @@ function App() {
             <span style={{margin:"0 8px",color:C.border}}>|</span>
             ≈ <span style={{color:C.text}}>{fmtUSD(tokensHeld*currentPrice)}</span>
           </div>
-          {/* Drive status */}
-          <div style={{display:"flex",alignItems:"center",gap:6,borderLeft:`1px solid ${C.border}`,paddingLeft:14}}>
-            {authToken ? (
+          <div style={{display:"flex",alignItems:"center",gap:8,borderLeft:`1px solid ${C.border}`,paddingLeft:14}}>
+            {authToken?(
               <>
                 <div style={{width:7,height:7,borderRadius:"50%",background:driveColor,flexShrink:0}} className={driveStatus==="saving"?"pulse":""}/>
                 <span style={{fontSize:10,color:driveColor}}>{driveMsg}</span>
               </>
-            ) : (
-              <button className="g-signin" onClick={signInGoogle}>
-                <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            ):(
+              <button className="g-signin" onClick={signIn}>
+                <svg viewBox="0 0 24 24" width="18" height="18"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
                 Sign in with Google
               </button>
             )}
-            <button onClick={()=>setShowSetup(true)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"4px 8px",cursor:"pointer",fontSize:10}}>⚙</button>
+            <button onClick={()=>setShowSetup(true)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"4px 8px",cursor:"pointer",fontSize:11}}>⚙</button>
           </div>
         </div>
       </div>
@@ -536,9 +503,10 @@ function App() {
 
       <div style={{padding:20,maxWidth:980,margin:"0 auto"}}>
 
-        {/* ── DASHBOARD ── */}
+        {/* ══ DASHBOARD ══ */}
         {tab==="dashboard"&&<>
-          <div style={card({marginBottom:16})}>
+          {/* Hero card */}
+          <div style={S.card({marginBottom:16})}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:12}}>
               <div>
                 <div style={{fontSize:10,letterSpacing:2,color:C.muted,marginBottom:6}}>RAISED vs TARGET</div>
@@ -546,9 +514,9 @@ function App() {
                   <span style={{fontSize:34,fontWeight:700,color:C.accent,lineHeight:1}}>{fmtUSD(totalRaised)}</span>
                   <span style={{fontSize:18,color:C.muted}}>/ {fmtUSD(target)}</span>
                 </div>
-                <div style={{fontSize:11,color:C.muted,marginTop:6,display:"flex",gap:16}}>
-                  <span>FLR: <span style={{color:C.text}}>{fmtUSD(totalNetValue)}</span></span>
-                  <span>Cash: <span style={{color:C.gold}}>{fmtUSD(totalCash)}</span></span>
+                <div style={{fontSize:11,color:C.muted,marginTop:8,display:"flex",gap:16,flexWrap:"wrap"}}>
+                  <span>Guide levels · log at actual execution price · Sells: <span style={{color:C.accent}}>{fmtUSD(totalSellProceeds)}</span></span>
+                  <span>Cash deployed: <span style={{color:C.gold}}>{fmtUSD(cashDeployedTotal)}</span></span>
                 </div>
               </div>
               <div style={{textAlign:"right"}}>
@@ -561,13 +529,38 @@ function App() {
             {target===0&&<div style={{fontSize:10,color:C.muted,marginTop:6,fontStyle:"italic"}}>Add debts to set your target</div>}
           </div>
 
+          {/* Target breakdown */}
+          <div style={S.card({marginBottom:16})}>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:12}}>TARGET BREAKDOWN</div>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {[
+                {label:"Debt balances",val:debtTotal,color:C.red},
+                {label:"FLR buy costs (to recover)",val:totalBuyCost,color:C.blue},
+                {label:"Cash additions (to recover)",val:cashAdditionsTotal,color:C.purple},
+              ].map(({label,val,color})=>(
+                <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:color}}/>
+                    <span style={{color:C.muted,fontSize:12}}>{label}</span>
+                  </div>
+                  <span style={{color,fontWeight:700}}>{fmtUSD(val)}</span>
+                </div>
+              ))}
+              <div style={{borderTop:`1px solid ${C.border}`,paddingTop:8,display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontWeight:700}}>Total Target</span>
+                <span style={{fontWeight:700,fontSize:16}}>{fmtUSD(target)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats row */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
             {[
-              {label:"NET SOLD",val:fmtTok(totalNetQty),sub:`${fmtUSD(totalNetValue)} realised`,color:C.accent,pct:totalNetQty/TOTAL_TOKENS*100},
               {label:"TOKENS HELD",val:fmtTok(tokensHeld),sub:`≈ ${fmtUSD(tokensHeld*currentPrice)} now`,color:C.blue,pct:tokensHeld/TOTAL_TOKENS*100},
-              {label:"CASH DEPLOYED",val:fmtUSD(totalCash),sub:`${cashDeployed.length} entries · to replenish`,color:C.gold,pct:target>0?(totalCash/target)*100:0},
+              {label:"NET SELL VALUE",val:fmtUSD(totalSellProceeds),sub:`${fmtTok(totalSoldQty)} sold`,color:C.accent,pct:target>0?(totalSellProceeds/target)*100:0},
+              {label:"TOTAL BUY COST",val:fmtUSD(totalBuyCost),sub:`${fmtTok(totalBoughtQty)} bought`,color:C.red,pct:target>0?(totalBuyCost/target)*100:0},
             ].map(({label,val,sub,color,pct})=>(
-              <div key={label} style={card()}>
+              <div key={label} style={S.card()}>
                 <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:8}}>{label}</div>
                 <div style={{fontSize:18,fontWeight:700,color}}>{val}</div>
                 <div style={{fontSize:10,color:C.muted,margin:"4px 0 8px"}}>{sub}</div>
@@ -576,13 +569,14 @@ function App() {
             ))}
           </div>
 
-          {debts.length>0&&<div style={card()}>
-            <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:14}}>DEBT BREAKDOWN</div>
+          {/* Debt bars */}
+          {debts.length>0&&<div style={S.card()}>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:14}}>DEBT COVERAGE</div>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               {debts.map((d,i)=>{
                 const bal=parseFloat(d.balance)||0;
-                const share=target>0?(bal/target)*100:0;
-                const covered=Math.min(bal,target>0?(bal/target)*totalRaised:0);
+                const share=debtTotal>0?(bal/debtTotal)*100:0;
+                const covered=Math.min(bal,debtTotal>0?(bal/debtTotal)*totalRaised:0);
                 const pct=bal>0?(covered/bal)*100:0;
                 const hue=HUES[i%HUES.length];
                 return <div key={d.id}>
@@ -608,26 +602,31 @@ function App() {
           </div>}
         </>}
 
-        {/* ── SELL PLAN ── */}
+        {/* ══ SELL PLAN ══ */}
         {tab==="sells"&&<>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
-            <span style={{fontSize:11,color:C.muted}}>{fmtUSD(totalNetValue)} net · {ld.filter(l=>l.netQty>=l.tokens).length} complete{totalBoughtBack>0?` · ${fmtTok(totalBoughtBack)} bought back`:""}</span>
-            <span style={{fontSize:11,color:C.muted}}>tap row → trade log</span>
+            <span style={{fontSize:11,color:C.muted}}>
+              Guide levels · log at actual execution price · Sells: <span style={{color:C.accent}}>{fmtUSD(totalSellProceeds)}</span>
+              {totalBuyCost>0&&<> · Buys: <span style={{color:C.red}}>{fmtUSD(totalBuyCost)}</span></>}
+              {" · "}{ld.filter(l=>l.netQty>=l.tokens).length} levels complete
+            </span>
+            <span style={{fontSize:11,color:C.muted}}>tap row → log actual trade</span>
           </div>
           <div style={{overflowX:"auto"}}>
             <table>
-              <thead><tr>{["Price","Target","Net Sold","Buybacks","Net Value","Cumulative","Status"].map(h=><th key={h}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Guide Price","Plan Tokens","Net Qty","Sell $","Buy $","Net","Cumulative","Status"].map(h=><th key={h}>{h}</th>)}</tr></thead>
               <tbody>
                 {ld.map((row,i)=>{
-                  const done=row.netQty>=row.tokens, partial=row.netQty>0&&!done, hasBuys=row.trades.some(t=>t.type==="buy");
-                  return <tr key={i} onClick={()=>{setNewTrade({type:"sell",qty:"",price:row.price,note:""});setLogLevel(i);}} style={{cursor:"pointer",background:done?"#00e5b008":hasBuys?"#4da6ff06":"transparent"}}>
+                  const done=row.netQty>=row.tokens,partial=row.netQty>0&&!done,hasBuys=row.trades.some(t=>t.type==="buy");
+                  return <tr key={i} className="clickable" onClick={()=>{setNewTrade({type:"sell",qty:"",price:row.price,note:""});setLogLevel(i);}} style={{background:done?"#00e5b008":hasBuys?"#ff4d6a06":"transparent"}}>
                     <td style={{color:C.gold,fontWeight:700}}>${row.price.toFixed(4)}</td>
                     <td style={{color:C.muted}}>{fmtTok(row.tokens)}</td>
                     <td style={{color:done?C.accent:partial?C.gold:C.text,fontWeight:done||partial?700:400}}>{fmtTok(Math.max(0,row.netQty))}</td>
-                    <td style={{color:hasBuys?C.blue:C.muted}}>{hasBuys?fmtTok(row.totalBoughtQty):"—"}</td>
-                    <td style={{color:row.netValue>0?C.accent:C.muted}}>{row.netValue>0?fmtUSD(row.netValue):"—"}</td>
-                    <td>{row.cumVal>0?fmtUSD(row.cumVal):"—"}</td>
-                    <td>{done?<Tag color={C.accent}>DONE</Tag>:partial?<Tag color={C.gold}>PARTIAL</Tag>:hasBuys?<Tag color={C.blue}>BUYBACK</Tag>:<Tag color={C.muted}>OPEN</Tag>}</td>
+                    <td style={{color:row.sellProceeds>0?C.accent:C.muted}}>{row.sellProceeds>0?fmtUSD(row.sellProceeds):"—"}</td>
+                    <td style={{color:hasBuys?C.red:C.muted}}>{hasBuys?fmtUSD(row.buyCost):"—"}</td>
+                    <td style={{color:row.cumVal>=0?C.text:C.red}}>{row.sellProceeds>0||hasBuys?fmtUSD(row.sellProceeds-row.buyCost):"—"}</td>
+                    <td>{row.cumVal!==0?fmtUSD(row.cumVal):"—"}</td>
+                    <td>{done?<Tag color={C.accent}>DONE</Tag>:partial?<Tag color={C.gold}>PARTIAL</Tag>:hasBuys?<Tag color={C.red}>HAS BUYS</Tag>:<Tag color={C.muted}>OPEN</Tag>}</td>
                   </tr>;
                 })}
               </tbody>
@@ -635,80 +634,111 @@ function App() {
           </div>
         </>}
 
-        {/* ── DEBTS ── */}
+        {/* ══ DEBTS ══ */}
         {tab==="debts"&&<>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <span style={{fontSize:11,color:C.muted}}>Dynamic target: <span style={{color:C.text,fontWeight:700}}>{fmtUSD(target)}</span></span>
-            <Btn onClick={()=>setShowAddDebt(!showAddDebt)}>+ ADD BALANCE</Btn>
+            <span style={{fontSize:11,color:C.muted}}>Debt total: <span style={{color:C.text,fontWeight:700}}>{fmtUSD(debtTotal)}</span></span>
+            <Btn onClick={()=>setShowAddDebt(!showAddDebt)}>+ ADD</Btn>
           </div>
-          {showAddDebt&&<div style={card({marginBottom:16,borderColor:C.accent+"40"})}>
+          {showAddDebt&&<div style={S.card({marginBottom:16,borderColor:C.accent+"40"})}>
             <div style={{fontSize:10,color:C.accent,letterSpacing:2,marginBottom:12}}>NEW BALANCE</div>
             <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10,marginBottom:10}}>
-              <div><div style={{fontSize:9,color:C.muted,marginBottom:4}}>LABEL</div><input style={inp()} placeholder="e.g. Barclaycard..." value={newDebt.name} onChange={e=>setNewDebt({...newDebt,name:e.target.value})}/></div>
-              <div><div style={{fontSize:9,color:C.muted,marginBottom:4}}>BALANCE ($)</div><input style={inp()} type="number" value={newDebt.balance} onChange={e=>setNewDebt({...newDebt,balance:e.target.value})}/></div>
+              <div><Label>Label</Label><input style={S.inp()} placeholder="e.g. Barclaycard..." value={newDebt.name} onChange={e=>setNewDebt({...newDebt,name:e.target.value})}/></div>
+              <div><Label>Balance ($)</Label><input style={S.inp()} type="number" value={newDebt.balance} onChange={e=>setNewDebt({...newDebt,balance:e.target.value})}/></div>
             </div>
-            <div style={{marginBottom:12}}><div style={{fontSize:9,color:C.muted,marginBottom:4}}>NOTES</div><input style={inp()} placeholder="Interest rate, priority..." value={newDebt.notes} onChange={e=>setNewDebt({...newDebt,notes:e.target.value})}/></div>
+            <div style={{marginBottom:12}}><Label>Notes</Label><input style={S.inp()} placeholder="Interest rate, priority..." value={newDebt.notes} onChange={e=>setNewDebt({...newDebt,notes:e.target.value})}/></div>
             <div style={{display:"flex",gap:8}}><Btn onClick={addDebt}>SAVE</Btn><Btn onClick={()=>setShowAddDebt(false)} color={C.muted}>CANCEL</Btn></div>
           </div>}
-          {debts.length===0&&!showAddDebt&&<div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No balances yet.</div>}
+          {debts.length===0&&!showAddDebt&&<div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No debts yet.</div>}
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {debts.map((d,i)=>{
-              const bal=parseFloat(d.balance)||0, hue=HUES[i%HUES.length];
-              const covered=Math.min(bal,target>0?(bal/target)*totalRaised:0);
-              const pct=bal>0?(covered/bal)*100:0, isExp=expandedDebt===d.id;
-              return <div key={d.id} style={card({borderLeft:`3px solid ${hue}`})}>
+              const bal=parseFloat(d.balance)||0,hue=HUES[i%HUES.length];
+              const covered=Math.min(bal,debtTotal>0?(bal/debtTotal)*totalRaised:0);
+              const pct=bal>0?(covered/bal)*100:0,isExp=expandedDebt===d.id;
+              return <div key={d.id} style={S.card({borderLeft:`3px solid ${hue}`})}>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{flex:1,minWidth:120}}>
-                    <input style={{...inp(),background:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,borderRadius:0,paddingLeft:0,fontSize:14,fontWeight:600}} value={d.name} onChange={e=>updateDebt(d.id,"name",e.target.value)}/>
-                  </div>
+                  <div style={{flex:1,minWidth:120}}><input style={{...S.inp(),background:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,borderRadius:0,paddingLeft:0,fontSize:14,fontWeight:600}} value={d.name} onChange={e=>updateDebt(d.id,"name",e.target.value)}/></div>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
                     <span style={{color:C.muted}}>$</span>
-                    <input style={inp({width:110,color:hue,fontWeight:700,fontSize:16,textAlign:"right"})} type="number" value={d.balance} onChange={e=>updateDebt(d.id,"balance",e.target.value)}/>
+                    <input style={S.inp({width:110,color:hue,fontWeight:700,fontSize:16,textAlign:"right"})} type="number" value={d.balance} onChange={e=>updateDebt(d.id,"balance",e.target.value)}/>
                   </div>
                   <button onClick={()=>setExpandedDebt(isExp?null:d.id)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>{isExp?"▲":"▼"}</button>
-                  <button onClick={()=>setDebts(d=>d.filter(x=>x.id!==d.id))} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}} onClick={()=>setDebts(prev=>prev.filter(x=>x.id!==d.id))}>✕</button>
+                  <button onClick={()=>setDebts(prev=>prev.filter(x=>x.id!==d.id))} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>✕</button>
                 </div>
                 <div style={{marginTop:10}}><Bar pct={pct} color={hue}/><div style={{display:"flex",justifyContent:"space-between",marginTop:4}}><span style={{fontSize:10,color:C.muted}}>{fmtUSD(covered)} covered</span><span style={{fontSize:10,color:C.muted}}>{fmtUSD(Math.max(0,bal-covered))} left · {fmt(pct,0)}%</span></div></div>
-                {isExp&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}><div style={{fontSize:9,color:C.muted,marginBottom:4}}>NOTES</div><input style={inp({color:C.muted,fontStyle:"italic"})} value={d.notes||""} onChange={e=>updateDebt(d.id,"notes",e.target.value)}/></div>}
+                {isExp&&<div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${C.border}`}}><Label>Notes</Label><input style={S.inp({color:C.muted,fontStyle:"italic"})} value={d.notes||""} onChange={e=>updateDebt(d.id,"notes",e.target.value)}/></div>}
               </div>;
             })}
           </div>
-          {debts.length>0&&<div style={card({marginTop:14,borderColor:C.accent+"30",display:"flex",justifyContent:"space-between",alignItems:"center"})}><span style={{color:C.muted}}>TOTAL TARGET</span><span style={{fontSize:24,fontWeight:700}}>{fmtUSD(target)}</span></div>}
+          {debts.length>0&&<div style={S.card({marginTop:14,borderColor:C.accent+"30",display:"flex",justifyContent:"space-between",alignItems:"center"})}><span style={{color:C.muted}}>TOTAL DEBT</span><span style={{fontSize:22,fontWeight:700,color:C.red}}>{fmtUSD(debtTotal)}</span></div>}
         </>}
 
-        {/* ── CASH ── */}
+        {/* ══ CASH ══ */}
         {tab==="cash"&&<>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div>
-              <span style={{fontSize:11,color:C.muted}}>Deployed: <span style={{color:C.gold,fontWeight:700}}>{fmtUSD(totalCash)}</span></span>
-              <span style={{fontSize:11,color:C.muted,marginLeft:16}}>To replenish: <span style={{color:C.red}}>{fmtUSD(totalCash)}</span></span>
-            </div>
-            <Btn onClick={()=>setShowAddCash(!showAddCash)}>+ LOG CASH</Btn>
-          </div>
-          {showAddCash&&<div style={card({marginBottom:16,borderColor:C.gold+"40"})}>
-            <div style={{fontSize:10,color:C.gold,letterSpacing:2,marginBottom:12}}>LOG CASH DEPLOYED</div>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10,marginBottom:10}}>
-              <div><div style={{fontSize:9,color:C.muted,marginBottom:4}}>DESCRIPTION</div><input style={inp()} placeholder="e.g. Paid Barclaycard from savings..." value={newCash.label} onChange={e=>setNewCash({...newCash,label:e.target.value})}/></div>
-              <div><div style={{fontSize:9,color:C.muted,marginBottom:4}}>AMOUNT ($)</div><input style={inp({color:C.gold})} type="number" value={newCash.amount} onChange={e=>setNewCash({...newCash,amount:e.target.value})}/></div>
-            </div>
-            <div style={{marginBottom:12}}><div style={{fontSize:9,color:C.muted,marginBottom:4}}>NOTE</div><input style={inp()} value={newCash.note} onChange={e=>setNewCash({...newCash,note:e.target.value})}/></div>
-            <div style={{display:"flex",gap:8}}><Btn onClick={addCash} color={C.gold}>SAVE</Btn><Btn onClick={()=>setShowAddCash(false)} color={C.muted}>CANCEL</Btn></div>
-          </div>}
-          {cashDeployed.length===0&&!showAddCash&&<div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No cash entries yet.</div>}
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {cashDeployed.map(c=>(
-              <div key={c.id} style={card({display:"flex",alignItems:"center",gap:12,borderLeft:`3px solid ${C.gold}`})}>
-                <div style={{flex:1}}><div style={{fontWeight:600}}>{c.label}</div>{c.note&&<div style={{fontSize:10,color:C.muted,fontStyle:"italic",marginTop:2}}>{c.note}</div>}<div style={{fontSize:10,color:C.muted,marginTop:2}}>{c.date}</div></div>
-                <div style={{fontSize:20,fontWeight:700,color:C.gold}}>{fmtUSD(c.amount)}</div>
-                <button onClick={()=>setCashDeployed(prev=>prev.filter(x=>x.id!==c.id))} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>✕</button>
+          {/* Summary */}
+          <div style={S.card({marginBottom:16})}>
+            <div style={{fontSize:9,color:C.muted,letterSpacing:2,marginBottom:12}}>CASH SUMMARY</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <div>
+                <div style={{fontSize:10,color:C.muted,marginBottom:4}}>DEPLOYED (counts toward raised)</div>
+                <div style={{fontSize:22,fontWeight:700,color:C.gold}}>{fmtUSD(cashDeployedTotal)}</div>
+                <Bar pct={target>0?(cashDeployedTotal/target)*100:0} color={C.gold}/>
               </div>
-            ))}
+              <div>
+                <div style={{fontSize:10,color:C.muted,marginBottom:4}}>ADDITIONS (added to target)</div>
+                <div style={{fontSize:22,fontWeight:700,color:C.purple}}>{fmtUSD(cashAdditionsTotal)}</div>
+                <Bar pct={target>0?(cashAdditionsTotal/target)*100:0} color={C.purple}/>
+              </div>
+            </div>
           </div>
-          {cashDeployed.length>0&&<div style={card({marginTop:14,borderColor:C.gold+"30"})}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}><span style={{color:C.muted}}>Total deployed</span><span style={{fontSize:22,fontWeight:700,color:C.gold}}>{fmtUSD(totalCash)}</span></div>
-            <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Needs replenishing via FLR sells — counts toward {fmtUSD(target)} target.</div>
-            <Bar pct={target>0?(totalCash/target)*100:0} color={C.gold}/>
+
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <span style={{fontSize:11,color:C.muted}}>{cashItems.length} entries</span>
+            <Btn onClick={()=>setShowAddCash(!showAddCash)}>+ ADD ENTRY</Btn>
+          </div>
+
+          {showAddCash&&<div style={S.card({marginBottom:16,borderColor:C.gold+"40"})}>
+            <div style={{fontSize:10,color:C.gold,letterSpacing:2,marginBottom:12}}>NEW CASH ENTRY</div>
+
+            {/* Type selector */}
+            <div style={{display:"flex",gap:8,marginBottom:14}}>
+              {[{v:"deployed",label:"DEPLOYED",sub:"Counts toward raised",color:C.gold},{v:"addition",label:"ADDITION",sub:"Adds to target",color:C.purple}].map(({v,label,sub,color})=>(
+                <button key={v} onClick={()=>setNewCash(c=>({...c,type:v}))} style={{flex:1,padding:"10px",borderRadius:6,cursor:"pointer",fontFamily:"inherit",border:`2px solid ${newCash.type===v?color:C.border}`,background:newCash.type===v?color+"15":"transparent",transition:"all .15s"}}>
+                  <div style={{fontWeight:700,fontSize:11,color:newCash.type===v?color:C.muted,letterSpacing:1}}>{label}</div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:2}}>{sub}</div>
+                </button>
+              ))}
+            </div>
+
+            <div style={{background:newCash.type==="deployed"?C.gold+"10":C.purple+"10",border:`1px solid ${(newCash.type==="deployed"?C.gold:C.purple)}30`,borderRadius:6,padding:"8px 12px",marginBottom:12,fontSize:11,color:newCash.type==="deployed"?C.gold:C.purple}}>
+              {newCash.type==="deployed"?"Cash already spent toward debt — reduces what you still need to raise":"Extra cash spent or invested — adds to what you need to recover"}
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:10,marginBottom:10}}>
+              <div><Label>Description</Label><input style={S.inp()} placeholder="e.g. Paid Barclaycard from savings..." value={newCash.label} onChange={e=>setNewCash({...newCash,label:e.target.value})}/></div>
+              <div><Label>Amount ($)</Label><input style={S.inp({color:newCash.type==="deployed"?C.gold:C.purple})} type="number" value={newCash.amount} onChange={e=>setNewCash({...newCash,amount:e.target.value})}/></div>
+            </div>
+            <div style={{marginBottom:12}}><Label>Note</Label><input style={S.inp()} value={newCash.note} onChange={e=>setNewCash({...newCash,note:e.target.value})}/></div>
+            <div style={{display:"flex",gap:8}}><Btn onClick={addCash} color={newCash.type==="deployed"?C.gold:C.purple}>SAVE</Btn><Btn onClick={()=>setShowAddCash(false)} color={C.muted}>CANCEL</Btn></div>
           </div>}
+
+          {cashItems.length===0&&!showAddCash&&<div style={{textAlign:"center",padding:60,color:C.muted,fontStyle:"italic"}}>No cash entries yet.</div>}
+
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {cashItems.map(c=>{
+              const color=c.type==="deployed"?C.gold:C.purple;
+              return <div key={c.id} style={S.card({display:"flex",alignItems:"center",gap:12,borderLeft:`3px solid ${color}`})}>
+                <Tag color={color}>{c.type==="deployed"?"DEPLOYED":"ADDITION"}</Tag>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600}}>{c.label}</div>
+                  {c.note&&<div style={{fontSize:10,color:C.muted,fontStyle:"italic",marginTop:2}}>{c.note}</div>}
+                  <div style={{fontSize:10,color:C.muted,marginTop:2}}>{c.date}</div>
+                </div>
+                <div style={{fontSize:18,fontWeight:700,color}}>{fmtUSD(c.amount)}</div>
+                <button onClick={()=>setCashItems(prev=>prev.filter(x=>x.id!==c.id))} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>✕</button>
+              </div>;
+            })}
+          </div>
         </>}
 
       </div>
