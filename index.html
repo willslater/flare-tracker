@@ -23,10 +23,10 @@ table{width:100%;border-collapse:collapse}
 th{text-align:left;font-size:9px;letter-spacing:2px;color:#4a5870;text-transform:uppercase;padding:7px 8px;border-bottom:1px solid #1c2535;white-space:nowrap}
 td{padding:7px 8px;border-bottom:1px solid rgba(28,37,53,0.4);font-size:12px}
 .crow:hover td{background:rgba(255,255,255,0.03);cursor:pointer}
-.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:100;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:flex-end;justify-content:center;padding:0}
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:100;overflow-y:scroll;-webkit-overflow-scrolling:touch;display:flex;align-items:flex-end;justify-content:center;padding:0;-webkit-transform:translateZ(0);transform:translateZ(0)}
 @media(min-width:600px){.modal-bg{align-items:center;padding:16px}}
-.modal{background:#0d1017;border:1px solid #1c2535;border-radius:12px 12px 0 0;width:100%;max-width:580px;position:relative;margin-top:auto;padding-bottom:env(safe-area-inset-bottom)}
-@media(min-width:600px){.modal{border-radius:12px;margin:auto}}
+.modal{background:#0d1017;border:1px solid #1c2535;border-radius:12px 12px 0 0;width:100%;max-width:580px;position:relative;margin-top:auto;padding-bottom:max(16px,env(safe-area-inset-bottom))}
+@media(min-width:600px){.modal{border-radius:12px;margin:16px auto}}
 .setup-overlay{position:fixed;inset:0;background:#080b0f;z-index:200;display:flex;align-items:center;justify-content:center;padding:20px}
 .setup-box{background:#121720;border:1px solid #1c2535;border-radius:14px;padding:24px;max-width:460px;width:100%}
 .g-signin{display:flex;align-items:center;gap:10px;background:#fff;color:#333;border:none;border-radius:6px;padding:9px 14px;cursor:pointer;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,0.25);white-space:nowrap}
@@ -39,7 +39,8 @@ td{padding:7px 8px;border-bottom:1px solid rgba(28,37,53,0.4);font-size:12px}
 .tab-btn{padding:6px 12px;border-radius:5px;cursor:pointer;font-size:10px;letter-spacing:1.5px;font-weight:600;text-transform:uppercase;white-space:nowrap;border:1px solid transparent;background:transparent;color:#4a5870;font-family:'DM Mono',monospace;transition:all .15s;flex-shrink:0}
 .tab-btn.active{background:#00e5b012;color:#00e5b0;border-color:rgba(0,229,176,0.35)}
 .inp{background:#161c26;border:1px solid #1c2535;color:#dde3ee;border-radius:5px;padding:10px 12px;font-family:'DM Mono',monospace;font-size:16px;outline:none;width:100%;-webkit-appearance:none;appearance:none}
-.inp:focus{border-color:#00e5b055}
+.inp:focus{border-color:#00e5b055;outline:none}
+.inp:focus-visible{outline:none}
 .card{background:#121720;border:1px solid #1c2535;border-radius:10px;padding:14px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -176,6 +177,41 @@ async function fetchGBPUSD(){
 function lStats(l){
   const s=l.trades.filter(t=>t.type==="sell"),b=l.trades.filter(t=>t.type==="buy");
   return{netQty:s.reduce((a,t)=>a+t.qty,0)-b.reduce((a,t)=>a+t.qty,0),sellP:s.reduce((a,t)=>a+t.qty*t.price,0),buyC:b.reduce((a,t)=>a+t.qty*t.price,0),soldQ:s.reduce((a,t)=>a+t.qty,0),boughtQ:b.reduce((a,t)=>a+t.qty,0)};
+}
+
+// ── DailySellForm — proper component so hooks work correctly ──
+function DailySellForm({flrPrice, dailySettings, logDailySell, C}){
+  const [sellPrice, setSellPrice] = useState(flrPrice.toFixed(6));
+  const sp = parseFloat(sellPrice) || flrPrice;
+  const rebuyTarget = (sp * (1 - dailySettings.rebuyPct/100)).toFixed(6);
+  const tokens = fmt(dailySettings.amount / sp, 0);
+  const Lbl = ({ch}) => <div style={{fontSize:9,color:C.muted,letterSpacing:1.5,marginBottom:4,textTransform:"uppercase"}}>{ch}</div>;
+  return(
+    <div style={{padding:"16px"}}>
+      <div style={{marginBottom:14}}>
+        <Lbl ch="Actual sell price ($)"/>
+        <input
+          type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*"
+          className="inp" style={{color:C.gold,fontSize:18}}
+          placeholder={flrPrice.toFixed(6)}
+          value={sellPrice}
+          onChange={e=>setSellPrice(e.target.value)}
+          onFocus={e=>e.target.select()}
+        />
+      </div>
+      <div style={{background:C.card2,borderRadius:8,padding:"12px 14px",marginBottom:14,display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+        {[{l:"SELL VALUE",v:"$"+dailySettings.amount,c:C.accent},{l:"TOKENS SOLD",v:tokens,c:C.gold},{l:"REBUY TARGET",v:"$"+rebuyTarget,c:C.blue}].map(x=>(
+          <div key={x.l}><div style={{fontSize:9,color:C.muted,letterSpacing:1.5,marginBottom:4,textTransform:"uppercase"}}>{x.l}</div><div style={{fontSize:14,fontWeight:700,color:x.c}}>{x.v}</div></div>
+        ))}
+      </div>
+      <div style={{background:C.purple+"10",border:"1px solid "+C.purple+"30",borderRadius:6,padding:"8px 12px",marginBottom:14,fontSize:11,color:C.purple}}>
+        If price drops {dailySettings.rebuyPct}% → rebuy at ${rebuyTarget}
+      </div>
+      <button onClick={()=>logDailySell(sellPrice)} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"12px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:13,width:"100%",letterSpacing:1}}>
+        CONFIRM SELL
+      </button>
+    </div>
+  );
 }
 
 // ════════════════════════════════════════
@@ -323,16 +359,6 @@ function App(){
 
   // Price refresh
   useEffect(()=>{ const iv=setInterval(fetchPrices,120000); return()=>clearInterval(iv); },[]);
-
-  // Prevent body scroll on iOS when modal open
-  function lockBody(){ document.body.style.overflow='hidden'; document.body.style.position='fixed'; document.body.style.width='100%'; }
-  function unlockBody(){ document.body.style.overflow=''; document.body.style.position=''; document.body.style.width=''; }
-
-  useEffect(()=>{
-    const anyModal = logLvl!==null||showFree||showAddDebt||showAddCash;
-    if(anyModal) lockBody(); else unlockBody();
-    return ()=>unlockBody();
-  },[logLvl,showFree,showAddDebt,showAddCash]);
 
   // ── Daily strategy helpers ──
   function logDailySell(sellPrice){
@@ -540,11 +566,11 @@ function App(){
             <div className="grid2" style={{marginBottom:10}}>
               <div>
                 <Lbl ch="Quantity (tokens)"/>
-                <input ref={tradeQtyRef} type="number" inputMode="decimal" className="inp" placeholder="0" defaultValue=""/>
+                <input ref={tradeQtyRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" placeholder="0" defaultValue=""/>
               </div>
               <div>
                 <Lbl ch={"Actual Price — guide: "+l.price.toFixed(4)}/>
-                <input ref={tradePriceRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder={l.price.toFixed(4)} defaultValue={l.price}/>
+                <input ref={tradePriceRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} placeholder={l.price.toFixed(4)} defaultValue={l.price}/>
               </div>
             </div>
             <div style={{marginBottom:12}}>
@@ -607,11 +633,11 @@ function App(){
             <div className="grid2" style={{marginBottom:12}}>
               <div>
                 <Lbl ch="Total $ Value"/>
-                <input ref={freeValRef} type="number" inputMode="decimal" className="inp" style={{color:freeType==="sell"?C.accent:C.red}} placeholder="e.g. 1250.00" defaultValue="" onBlur={updateFreeCalc} onChange={updateFreeCalc}/>
+                <input ref={freeValRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:freeType==="sell"?C.accent:C.red}} placeholder="e.g. 1250.00" defaultValue="" onBlur={updateFreeCalc} onChange={updateFreeCalc}/>
               </div>
               <div>
                 <Lbl ch="Token Quantity"/>
-                <input ref={freeQtyRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="e.g. 500000" defaultValue="" onBlur={updateFreeCalc} onChange={updateFreeCalc}/>
+                <input ref={freeQtyRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} placeholder="e.g. 500000" defaultValue="" onBlur={updateFreeCalc} onChange={updateFreeCalc}/>
               </div>
             </div>
             {freeCalc.ppt>0&&(
@@ -663,7 +689,7 @@ function App(){
             <div className="grid2" style={{marginBottom:12}}>
               <div>
                 <Lbl ch={dtype==="dex"?"Borrowed Amount (debt)":"Balance"}/>
-                <input ref={balRef} type="number" inputMode="decimal" className="inp" placeholder="0.00"/>
+                <input ref={balRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" placeholder="0.00"/>
               </div>
               <div>
                 <Lbl ch="Currency"/>
@@ -683,8 +709,8 @@ function App(){
                   Liquidation triggers at 62.5% of position value — enter your collateral details below
                 </div>
                 <div className="grid2" style={{marginBottom:12}}>
-                  <div><Lbl ch="Collateral Tokens (FLR)"/><input ref={collateralQtyRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="e.g. 1000000"/></div>
-                  <div><Lbl ch="Collateral Value ($)"/><input ref={collateralValRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="e.g. 6800.00"/></div>
+                  <div><Lbl ch="Collateral Tokens (FLR)"/><input ref={collateralQtyRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} placeholder="e.g. 1000000"/></div>
+                  <div><Lbl ch="Collateral Value ($)"/><input ref={collateralValRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} placeholder="e.g. 6800.00"/></div>
                 </div>
               </div>
             )}
@@ -735,7 +761,7 @@ function App(){
             </div>
             <div className="grid2" style={{marginBottom:12}}>
               <div><Lbl ch="Description"/><input ref={lblRef} type="text" className="inp" placeholder="e.g. Paid Barclaycard..."/></div>
-              <div><Lbl ch="Amount (£)"/><input ref={amtRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold}} placeholder="0.00"/></div>
+              <div><Lbl ch="Amount (£)"/><input ref={amtRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} placeholder="0.00"/></div>
             </div>
             <div style={{marginBottom:14}}><Lbl ch="Note"/><input ref={noteRef} type="text" className="inp" placeholder="Source, context..."/></div>
             <button onClick={()=>addCash(ctype,lblRef.current&&lblRef.current.value,amtRef.current&&amtRef.current.value,noteRef.current&&noteRef.current.value)} style={{background:C.accentDim,border:"1px solid "+C.accent+"55",color:C.accent,borderRadius:5,padding:"10px 18px",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12,width:"100%"}}>
@@ -1015,7 +1041,7 @@ function App(){
                       <div style={{flex:1,minWidth:100,fontWeight:600,fontSize:14}}>{d.name}</div>
                       <Tag color={d.currency==="GBP"?C.gold:C.blue} ch={d.currency}/>
                       {d.dtype==="dex"&&<Tag color={C.purple} ch="DEX"/>}
-                      <input type="number" className="inp" style={{width:110,color:hue,fontWeight:700,fontSize:16,textAlign:"right"}} defaultValue={d.balance} onBlur={e=>updDebt(d.id,"balance",e.target.value)}/>
+                      <input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{width:110,color:hue,fontWeight:700,fontSize:16,textAlign:"right"}} defaultValue={d.balance} onBlur={e=>updDebt(d.id,"balance",e.target.value)}/>
                       <button onClick={()=>setExpandedDebt(isExp?null:d.id)} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>{isExp?"▲":"▼"}</button>
                       <button onClick={()=>setDebts(prev=>prev.filter(x=>x.id!==d.id))} style={{background:"transparent",border:"1px solid "+C.border,color:C.muted,borderRadius:4,padding:"5px 10px",cursor:"pointer"}}>✕</button>
                     </div>
@@ -1058,8 +1084,8 @@ function App(){
                             <div style={{background:C.purple+"10",border:"1px solid "+C.purple+"30",borderRadius:6,padding:"10px 12px",marginBottom:8}}>
                               <div style={{fontSize:9,color:C.purple,letterSpacing:2,marginBottom:8}}>DEX POSITION</div>
                               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-                                <div><Lbl ch="Collateral Tokens"/><input type="number" inputMode="decimal" className="inp" style={{color:C.gold}} defaultValue={d.collateralQty||""} onBlur={e=>updDebt(d.id,"collateralQty",e.target.value)}/></div>
-                                <div><Lbl ch="Collateral Value ($)"/><input type="number" inputMode="decimal" className="inp" style={{color:C.gold}} defaultValue={d.collateralVal||""} onBlur={e=>updDebt(d.id,"collateralVal",e.target.value)}/></div>
+                                <div><Lbl ch="Collateral Tokens"/><input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} defaultValue={d.collateralQty||""} onBlur={e=>updDebt(d.id,"collateralQty",e.target.value)}/></div>
+                                <div><Lbl ch="Collateral Value ($)"/><input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold}} defaultValue={d.collateralVal||""} onBlur={e=>updDebt(d.id,"collateralVal",e.target.value)}/></div>
                               </div>
                               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
                                 <div>
@@ -1368,7 +1394,7 @@ function App(){
                   <div>
                     <div style={{marginBottom:14}}>
                       <Lbl ch="Actual sell price ($)"/>
-                      <input ref={priceRef} type="number" inputMode="decimal" className="inp" style={{color:C.gold,fontSize:18}} placeholder={flrPrice.toFixed(6)} defaultValue={flrPrice.toFixed(6)}
+                      <input ref={priceRef} type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.gold,fontSize:18}} placeholder={flrPrice.toFixed(6)} defaultValue={flrPrice.toFixed(6)}
                         onChange={e=>{const p=parseFloat(e.target.value)||flrPrice;setPreview({tokens:fmt(dailySettings.amount/p,0),rebuy:"$"+(p*(1-dailySettings.rebuyPct/100)).toFixed(6),resell:"$"+p.toFixed(6)});}}
                       />
                     </div>
@@ -1402,12 +1428,12 @@ function App(){
             <div style={{padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
               <div>
                 <Lbl ch="Daily sell amount ($)"/>
-                <input type="number" inputMode="decimal" className="inp" style={{color:C.accent,fontSize:18}} defaultValue={dailySettings.amount}
+                <input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.accent,fontSize:18}} defaultValue={dailySettings.amount}
                   onBlur={e=>setDailySettings(s=>({...s,amount:parseFloat(e.target.value)||100}))}/>
               </div>
               <div>
                 <Lbl ch="Rebuy % below sell price"/>
-                <input type="number" inputMode="decimal" className="inp" style={{color:C.blue}} defaultValue={dailySettings.rebuyPct}
+                <input type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" className="inp" style={{color:C.blue}} defaultValue={dailySettings.rebuyPct}
                   onBlur={e=>setDailySettings(s=>({...s,rebuyPct:parseFloat(e.target.value)||2}))}/>
                 <div style={{fontSize:10,color:C.muted,marginTop:4}}>e.g. 2 = rebuy 2% below sell price, resell when price recovers to original level</div>
               </div>
@@ -1422,6 +1448,14 @@ function App(){
   );
 }
 
+// iOS keyboard fix - scroll input into view on focus
+document.addEventListener('focusin', function(e) {
+  if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+    setTimeout(function() {
+      e.target.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 300);
+  }
+});
 ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
