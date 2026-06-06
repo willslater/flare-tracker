@@ -920,6 +920,13 @@ function App(){
                   const liq=d.liqPrice||0;
                   const dist=liq>0&&flrPrice>0?((liq-flrPrice)/flrPrice)*100:null;
                   const atRisk=liq>flrPrice;
+                  const dexDebtUSD=debtToUSD(d);
+                  // Tokens needed to clear this DEX debt at current price
+                  const tokensToCloseDex=flrPrice>0?dexDebtUSD/flrPrice:0;
+                  // If those tokens were sold, what's left and what avg price needed for remaining target
+                  const stackAfterDex=Math.max(0,tokensHeld-tokensToCloseDex);
+                  const targetAfterDex=Math.max(0,remaining-dexDebtUSD);
+                  const avgAfterDex=stackAfterDex>0?targetAfterDex/stackAfterDex:0;
                   return(
                     <div key={d.id} style={{marginBottom:i<debts.filter(x=>x.dtype==="dex").length-1?14:0}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
@@ -929,7 +936,7 @@ function App(){
                           <span style={{fontSize:10,color:C.muted}}>Collateral: <span style={{color:C.gold}}>{d.collateralQty?fmtT(d.collateralQty)+" FLR":d.collateralVal?"≈ "+fmtU(d.collateralVal):"—"}</span></span>
                         </div>
                       </div>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"10px 12px",background:atRisk?C.red+"08":C.purple+"08",borderRadius:8,border:"1px solid "+(atRisk?C.red+"30":C.purple+"25")}}>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,padding:"10px 12px",background:atRisk?C.red+"08":C.purple+"08",borderRadius:8,border:"1px solid "+(atRisk?C.red+"30":C.purple+"25"),marginBottom:10}}>
                         <div>
                           <div className="lbl">LIQ PRICE</div>
                           <div style={{fontSize:18,fontWeight:700,color:atRisk?C.red:C.purple}}>${liq.toFixed(6)}</div>
@@ -949,11 +956,35 @@ function App(){
                         </div>
                       </div>
                       {d.collateralQty>0&&liq>0&&(
-                        <div style={{marginTop:8}}>
+                        <div style={{marginBottom:10}}>
                           <Bar pct={Math.min(100,(flrPrice/liq)*100)} color={atRisk?C.red:C.accent} h={4}/>
                           <div style={{fontSize:9,color:C.muted,marginTop:3}}>Current price as % of liquidation price ({fmt((flrPrice/liq)*100,0)}%)</div>
                         </div>
                       )}
+                      {/* DEX clearance calculator */}
+                      <div style={{background:C.card2,borderRadius:8,padding:"10px 12px",border:"1px solid "+C.border}}>
+                        <div className="lbl" style={{marginBottom:8}}>CLEAR DEX DEBT AT CURRENT PRICE</div>
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:8}}>
+                          <div>
+                            <div className="lbl">TOKENS NEEDED</div>
+                            <div style={{fontSize:15,fontWeight:700,color:C.gold}}>{fmtT(tokensToCloseDex)}</div>
+                            <div style={{fontSize:9,color:C.muted,marginTop:2}}>{fmtU(dexDebtUSD)} ÷ ${flrPrice.toFixed(4)}</div>
+                          </div>
+                          <div>
+                            <div className="lbl">STACK AFTER</div>
+                            <div style={{fontSize:15,fontWeight:700,color:C.text}}>{fmtT(stackAfterDex)}</div>
+                            <div style={{fontSize:9,color:C.muted,marginTop:2}}>from {fmtT(tokensHeld)} held</div>
+                          </div>
+                          <div>
+                            <div className="lbl">AVG PRICE NEEDED</div>
+                            <div style={{fontSize:15,fontWeight:700,color:avgAfterDex>flrPrice?C.red:C.accent}}>${avgAfterDex.toFixed(6)}</div>
+                            <div style={{fontSize:9,color:C.muted,marginTop:2}}>to clear remaining {fmtU(targetAfterDex)}</div>
+                          </div>
+                        </div>
+                        <div style={{fontSize:10,color:C.muted,borderTop:"1px solid "+C.border,paddingTop:8}}>
+                          Selling <span style={{color:C.gold}}>{fmtT(tokensToCloseDex)} FLR</span> now at ${flrPrice.toFixed(4)} clears this DEX debt · remaining avg needed goes {avgAfterDex>avgNeeded?"▲":"▼"} from <span style={{color:avgNeeded>flrPrice?C.red:C.accent}}>${avgNeeded.toFixed(6)}</span> to <span style={{color:avgAfterDex>flrPrice?C.red:C.accent}}>${avgAfterDex.toFixed(6)}</span>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
